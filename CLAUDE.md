@@ -24,8 +24,8 @@
 
 - `Code.gs` — 部署到 Google Sheet 的 Apps Script 原始碼：`doPost` 只做序號驗證＋首次自動啟用，`doGet` 供部署後測試。`VALID_AMOUNT = 12`（月）。這不是這個資料夾裡的檔案在跑，是使用者手動複製貼到 Google Sheet 的「擴充功能 → Apps Script」編輯器裡部署成 Web App，取得網址後回填到 `index.html` 的 `LICENSE_CHECK_URL`。部署步驟見 `SETUP-授權伺服器設定.md`。
 - **這支後端只做序號驗證，不代理任何付費 API**（本工具的 LLM 串接是 BYOK，前端直連使用者自己的服務商 API，跟序號系統無關），也**不處理跑馬燈**（見下）。
-- **綁定的 Google Sheet 是全新建立、專屬本工具的表**（跟 `ai-image-prompt-studio` 沿用既有任務追蹤表不同，這次使用者確認要新建乾淨的一份）——目前**尚未建立與部署**。
-- **目前狀態：`LICENSE_CHECK_URL = ""`（佔位，刻意 fail-closed）**。頁面會顯示「尚未設定授權伺服器網址」並保持鎖定，這是預期行為，不是 bug。待使用者完成部署步驟（見 `SETUP-授權伺服器設定.md`）並回報 exec 網址後，才會回填到 `index.html` 並驗證。**測試欄位/分頁/AI/儲存清單等其他功能時，可在瀏覽器 devtools 手動對 `#licenseGate` 加上 `hidden` class 暫時繞過。**
+- **綁定的 Google Sheet 是全新建立、專屬本工具的表**（跟 `ai-image-prompt-studio` 沿用既有任務追蹤表不同，這次使用者確認要新建乾淨的一份）：<https://docs.google.com/spreadsheets/d/1ZfinIvYmOpZG0yN62sl9xBDKRiY2K7ZvBEb4MWp-hJQ/edit>（已建立，2026-08-12）。**這份表同一分頁裡疊了三個表格**（套用範本時貼了三次），只有最下面那個表格有「序號／開始日期／結束日期」欄位並已有一筆測試列（`mark0131`，效期到 2026/9/30）——`Code.gs` 的 `findHeaderRow_()` 會掃描整份工作表找出真正含有這三個表頭的那一列，不假設表頭在第一列，這個表結構才能正常運作；改動 `checkOrActivate()` 時務必保留這個掃描邏輯，不要簡化回「表頭固定在 `values[0]`」的寫法。**Apps Script 本身尚未部署。**
+- **目前狀態：`LICENSE_CHECK_URL = ""`（佔位，刻意 fail-closed）**。頁面會顯示「尚未設定授權伺服器網址」並保持鎖定，這是預期行為，不是 bug。待使用者完成部署步驟（見 `SETUP-授權伺服器設定.md`：開啟上面的 Sheet → 擴充功能 → Apps Script → 貼上 `Code.gs` → 部署為 Web App → 完成 OAuth 同意畫面，這一步無法自動化）並回報 exec 網址後，才會回填到 `index.html` 並驗證。**測試欄位/分頁/AI/儲存清單等其他功能時，可在瀏覽器 devtools 手動對 `#licenseGate` 加上 `hidden` class 暫時繞過。**
 
 ## 頂部共用跑馬燈
 
@@ -56,11 +56,11 @@ node --check _check.js
 
 ## GitHub 與線上部署
 
-計畫公開 repo：`M255525/ai-music-prompt-studio`（與 `ai-image-prompt-studio`／`ai-prompt-generator` 同樣模式）。`.github/workflows/deploy-pages.yml` 已備妥（觸發分支 `master`，比照本機 `git config init.defaultBranch` 確認值），GitHub repo 建立＋push＋啟用 Pages 待後續步驟完成。
+公開 repo：<https://github.com/M255525/ai-music-prompt-studio>（與 `ai-image-prompt-studio`／`ai-prompt-generator` 同樣模式，已建立並 push）。`.github/workflows/deploy-pages.yml` 已備妥（觸發分支 `master`），**GitHub Pages 尚未啟用**——待啟用後線上網址會是 <https://m255525.github.io/ai-music-prompt-studio/>。
 
 ## 本次未做（後續視需要再處理）
 
-- 授權伺服器（Google Sheet + Apps Script）尚未建立與部署，`LICENSE_CHECK_URL` 是空字串佔位。
-- GitHub repo 尚未建立、尚未 push、GitHub Pages 尚未啟用。
+- 授權用 Google Sheet 已建立，但 **Apps Script 尚未部署**，`LICENSE_CHECK_URL` 是空字串佔位——待使用者完成 `SETUP-授權伺服器設定.md` 的部署步驟並回報 exec 網址。
+- GitHub Pages 尚未啟用（repo 已建立並 push，見下）。
 - 桌面版 exe 未打包（`launcher.py` 已就緒，PORT 8790，之後要打包比照 `ai-image-prompt-studio` 的 PyInstaller 指令）。
 - 根目錄 `專案目錄.docx` 尚未加入本專案的列。
