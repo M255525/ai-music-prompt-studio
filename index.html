@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>音樂提示詞產生器 · Suno／Gemini 音樂提示詞</title>
+<style>
+  :root{
+    --bg:#150f1e;
+    --bg-alt:#1b1329;
+    --panel:#241a35;
+    --panel-raised:#2d213f;
+    --line:#3d2c54;
+    --line-soft:#2a2040;
+    --text:#f1ecf8;
+    --text-dim:#c3b4dc;
+    --text-faint:#8b7aa8;
+    --accent:#a855f7;
+    --accent-soft:rgba(168,85,247,0.14);
+    --accent-glow:rgba(168,85,247,0.5);
+    --gold:#fbbf24;
+    --gold-soft:rgba(251,191,36,0.14);
+    --red:#f87171;
+    --font-mono:ui-monospace,"Cascadia Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+    --font-sans:"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.65;min-height:100vh;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(168,85,247,0.08) 1px, transparent 0);
+    background-size:26px 26px;
+  }
+  a{color:var(--accent);}
+  ::selection{background:var(--accent);color:#1c0a2e;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  .btn{
+    font-family:var(--font-mono);font-size:13px;letter-spacing:.02em;
+    background:var(--panel-raised);color:var(--text);border:1px solid var(--line);
+    padding:9px 16px;border-radius:6px;cursor:pointer;transition:.15s;
+  }
+  .btn:hover{border-color:var(--accent);color:var(--accent);}
+  .btn.primary{background:var(--accent);color:#1c0a2e;border-color:var(--accent);font-weight:700;}
+  .btn.primary:hover{background:#c084fc;color:#1c0a2e;box-shadow:0 0 16px var(--accent-glow);}
+  .btn.gold{background:var(--gold);color:#3a2704;border-color:var(--gold);font-weight:700;}
+  .btn.gold:hover{background:#fcd34d;box-shadow:0 0 16px rgba(251,191,36,.5);}
+  .btn.ghost{background:transparent;}
+  .btn.danger:hover{border-color:var(--red);color:var(--red);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .btn:disabled:hover{border-color:var(--line);color:var(--text);box-shadow:none;}
+
+  /* ---------- 頂部跑馬燈（沿用工作區共用授權伺服器的公告，跟本工具的序號授權是兩個獨立系統） ---------- */
+  #marqueeBar{position:fixed;top:0;left:0;right:0;height:30px;background:var(--panel);border-bottom:1px solid var(--line);z-index:2100;overflow:hidden;display:none;align-items:center}
+  #marqueeBar.show{display:flex}
+  #marqueeTrack{display:inline-block;white-space:nowrap;padding-left:100%;font-size:13px;font-weight:600;color:var(--accent);animation:marquee-scroll 30s linear infinite}
+  body.has-marquee{padding-top:30px}
+  body.has-marquee .topbar{top:30px}
+  @keyframes marquee-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  /* ---------- 序號授權閘門（整個工具需先驗證通過才能使用） ---------- */
+  #licenseGate{position:fixed;inset:0;background:rgba(8,4,14,.95);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px}
+  #licenseGate.hidden{display:none}
+  .gate-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:32px;width:420px;max-width:92vw;text-align:center}
+  .gate-logo{font-size:20px;font-weight:700;margin-bottom:8px}
+  .gate-logo span{color:var(--accent)}
+  .gate-desc{font-size:13px;color:var(--text-dim);margin-bottom:20px;line-height:1.7}
+  .gate-row{display:flex;gap:8px;margin-bottom:14px}
+  .gate-row input{flex:1;min-width:0}
+  .gate-row button{flex:none}
+  .gate-status{display:block;font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:8px;background:var(--bg);color:var(--text-dim)}
+  .gate-status.ok{background:var(--accent-soft);color:var(--accent)}
+  .gate-status.bad{background:rgba(248,113,113,.12);color:var(--red)}
+  .gate-status.pending{opacity:.85}
+
+  input[type=text], input[type=password], input[type=number], textarea, select{
+    width:100%;background:var(--bg-alt);color:var(--text);border:1px solid var(--line);
+    border-radius:8px;padding:10px 12px;font-family:var(--font-sans);font-size:14px;
+  }
+  textarea{min-height:76px;resize:vertical;line-height:1.6;}
+  input:focus, textarea:focus, select:focus{border-color:var(--accent);}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;padding:16px 24px;
+    border-bottom:1px solid var(--line-soft);background:linear-gradient(180deg, var(--bg-alt), var(--bg));
+    position:sticky;top:0;z-index:20;backdrop-filter:blur(6px);
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);letter-spacing:.04em;}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent-glow);}
+  .brand strong{font-size:15px;font-weight:700;}
+  .topbar nav a{font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-decoration:none;border:1px solid var(--line);padding:7px 14px;border-radius:6px;transition:.15s;}
+  .topbar nav a:hover{color:var(--accent);border-color:var(--accent);}
+
+  /* ---------- hero ---------- */
+  .hero{padding:48px 24px 30px;text-align:center;border-bottom:1px solid var(--line-soft);background:linear-gradient(180deg, var(--bg-alt), var(--bg));}
+  .hero .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.3em;color:var(--text-faint);text-transform:uppercase;margin-bottom:14px;}
+  .hero h1{font-size:clamp(26px,4.6vw,40px);margin:0 0 12px;font-weight:800;letter-spacing:-.01em;}
+  .hero h1 .accent{color:var(--accent);}
+  .hero p.lead{max-width:600px;margin:0 auto 26px;color:var(--text-dim);font-size:15.5px;}
+
+  .type-tabs{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;max-width:820px;margin:0 auto;}
+  .type-tab{
+    font-family:var(--font-mono);font-size:13px;background:var(--panel);color:var(--text-dim);
+    border:1px solid var(--line);padding:10px 16px;border-radius:8px;cursor:pointer;transition:.15s;text-align:left;
+  }
+  .type-tab .tt-en{display:block;font-size:11px;color:var(--text-faint);letter-spacing:.06em;}
+  .type-tab .tt-zh{display:block;font-weight:700;color:var(--text);margin-top:2px;}
+  .type-tab:hover{border-color:var(--accent);}
+  .type-tab.active{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent-soft);}
+  .type-tab.active .tt-zh{color:var(--accent);}
+
+  main{max-width:820px;margin:0 auto;padding:34px 20px 60px;display:flex;flex-direction:column;gap:22px;}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  .panel-title{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;}
+  .panel-title .badge{
+    width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent);
+    display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:13px;font-weight:800;
+  }
+  .panel-hint{font-size:12.5px;color:var(--text-faint);margin:0 0 16px;}
+
+  .preset-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .preset-row label{font-family:var(--font-mono);font-size:12px;color:var(--text-faint);}
+  .preset-row select{flex:1;min-width:180px;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:13px;font-weight:700;color:var(--text-dim);margin-bottom:6px;}
+  .field .field-hint{font-size:12px;color:var(--text-faint);margin:4px 0 0;}
+  .field-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+
+  .checkbox-group{display:flex;flex-wrap:wrap;gap:8px;}
+  .checkbox-pill{font-family:var(--font-mono);font-size:12.5px;background:var(--panel-raised);color:var(--text-dim);border:1px solid var(--line);padding:7px 13px;border-radius:20px;cursor:pointer;user-select:none;transition:.15s;}
+  .checkbox-pill:hover{border-color:var(--accent);}
+  .checkbox-pill.checked{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
+  .checkbox-pill input{display:none;}
+
+  .output-box{
+    background:var(--bg-alt);border:1px solid var(--line);border-radius:8px;padding:14px;
+    white-space:pre-wrap;font-family:var(--font-mono);font-size:13px;color:var(--text);min-height:60px;line-height:1.7;
+  }
+  .output-box:empty::before{content:'（尚未產生內容）';color:var(--text-faint);font-family:var(--font-sans);}
+  .output-box.muted{color:var(--text-faint);font-style:italic;font-family:var(--font-sans);}
+  .output-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
+
+  .ai-panel{border-color:rgba(251,191,36,.35);}
+  .ai-panel .panel-title .badge{background:var(--gold-soft);color:var(--gold);}
+  .api-settings{margin-bottom:14px;}
+  .api-settings summary{cursor:pointer;font-family:var(--font-mono);font-size:12.5px;color:var(--text-dim);}
+  .api-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+  .api-grid label{grid-column:span 1;font-size:12px;color:var(--text-faint);display:block;}
+  .api-grid label.full{grid-column:1 / -1;}
+  .api-note{font-size:11.5px;color:var(--text-faint);margin-top:8px;line-height:1.6;}
+  .ai-report{margin-top:10px;font-size:12.5px;}
+  .ai-report .ok{color:var(--gold);}
+  .ai-report .warn{color:#facc15;}
+  .ai-report .bad{color:var(--red);}
+
+  .save-row{display:flex;gap:10px;margin-bottom:14px;}
+  .save-row input{flex:1;}
+  .saved-empty{font-size:12.5px;color:var(--text-faint);margin:0;}
+  .saved-item{border:1px solid var(--line-soft);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;}
+  .saved-item-name{font-weight:700;font-size:13.5px;}
+  .saved-item-meta{font-size:11.5px;color:var(--text-faint);margin-top:2px;font-family:var(--font-mono);}
+  .saved-item-actions{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip{font-family:var(--font-mono);font-size:11.5px;background:var(--panel-raised);color:var(--text-dim);border:1px solid var(--line);padding:5px 10px;border-radius:6px;cursor:pointer;}
+  .chip:hover{border-color:var(--accent);color:var(--accent);}
+
+  footer{max-width:820px;margin:0 auto;padding:0 20px 50px;}
+  .warn-box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;font-size:12.5px;color:var(--text-dim);}
+  .warn-box strong{color:var(--text);display:block;margin-bottom:8px;font-size:13px;}
+  .warn-box ul{margin:0;padding-left:18px;}
+  .warn-box li{margin-bottom:5px;}
+  .footer-meta{max-width:820px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--text-faint);font-family:var(--font-mono);}
+  .footer-meta a{color:var(--text-dim);}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--panel-raised);border:1px solid var(--accent);color:var(--text);padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;z-index:3000;}
+  .toast.show{opacity:1;transform:translate(-50%,0);}
+
+  /* ---------- 平板：field-grid/api-grid 維持雙欄，但欄寬縮減、間距微調 ---------- */
+  @media (max-width:900px){
+    main{padding:28px 18px 50px;}
+    .panel{padding:20px;}
+  }
+
+  /* ---------- 手機：單欄化＋放大觸控熱區（按鈕/chip/checkbox-pill 至少 38-44px） ---------- */
+  @media (max-width:600px){
+    .api-grid{grid-template-columns:1fr;}
+    .field-grid{grid-template-columns:1fr;}
+    .type-tabs{flex-direction:column;align-items:stretch;}
+    .hero{padding:36px 20px 24px;}
+    .panel{padding:16px;}
+    .btn{padding:11px 18px;min-height:44px;}
+    .chip{padding:8px 14px;min-height:38px;}
+    .checkbox-pill{padding:9px 14px;min-height:38px;}
+    .checkbox-group{gap:10px;}
+    #btnGateToggle{min-width:44px;}
+    .output-actions{gap:10px;}
+    .output-actions .btn{flex:1 1 auto;}
+  }
+</style>
+</head>
+<body>
+
+<!-- 頂部跑馬燈：獨立運作，內容抓自工作區共用的公告 Google Sheet；與下方序號授權是兩個獨立系統 -->
+<div id="marqueeBar"><div id="marqueeTrack"></div></div>
+
+<!-- 序號授權閘門：預設鎖定，驗證通過才會隱藏 -->
+<div id="licenseGate">
+  <div class="gate-box">
+    <div class="gate-logo">🎵 音樂提示詞 <span>產生器</span></div>
+    <div class="gate-desc">本工具需輸入授權序號並按「確認」驗證通過後才能使用。序號自第一次驗證起提供 12 個月使用期限。</div>
+    <div class="gate-row">
+      <input type="password" id="gateSerial" placeholder="請輸入授權序號" autocomplete="off">
+      <button type="button" class="btn" id="btnGateToggle" title="顯示／隱藏序號" aria-label="顯示／隱藏序號">👁</button>
+    </div>
+    <button type="button" class="btn primary" id="btnGateConfirm" style="width:100%;margin-bottom:12px">確認</button>
+    <span id="gateStatus" class="gate-status pending">尚未驗證</span>
+  </div>
+</div>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span><strong>音樂提示詞產生器</strong></div>
+  <nav><a href="manual.html">操作手冊</a></nav>
+</div>
+
+<div class="hero">
+  <div class="eyebrow">MUSIC PROMPT STUDIO</div>
+  <h1>一句話靈感，<span class="accent">組出可用的音樂提示詞</span></h1>
+  <p class="lead">填一次曲風、情緒與歌詞方向，Suno／Gemini 兩個分頁共用——組成 Suno 自訂模式可直接貼上的標籤與歌詞不需金鑰，或串接你自己的語言模型，取得中英對照的完整版本。</p>
+  <div class="type-tabs" id="typeTabs"></div>
+</div>
+
+<main>
+
+  <section class="panel" id="builderPanel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="badge">✎</span>曲風與歌詞設定</div>
+    </div>
+    <p class="panel-hint">以下設定 Suno／Gemini 兩個分頁共用；只有下方輸出區塊的組裝格式會依分頁不同。</p>
+
+    <div class="preset-row">
+      <label for="presetSelect">套用範例</label>
+      <select id="presetSelect"><option value="">— 選擇一個情境快速開始 —</option></select>
+      <button class="btn ghost" id="clearBtn" type="button">清空欄位</button>
+    </div>
+
+    <div class="field">
+      <label for="f_title">歌名（選填）</label>
+      <input type="text" id="f_title" placeholder="例：霓虹舊街">
+    </div>
+
+    <div class="field">
+      <label for="f_theme">歌曲主題（必填）</label>
+      <textarea id="f_theme" placeholder="例：深夜城市裡想起舊戀人，帶點懷舊又溫暖的氛圍"></textarea>
+    </div>
+
+    <div class="field">
+      <label>曲風（可複選）</label>
+      <div class="checkbox-group" id="genreGroup"></div>
+    </div>
+
+    <div class="field">
+      <label>情緒氛圍（可複選）</label>
+      <div class="checkbox-group" id="moodGroup"></div>
+    </div>
+
+    <div class="field-grid">
+      <div class="field"><label for="f_tempo">速度</label><select id="f_tempo"></select></div>
+      <div class="field"><label for="f_vocal">人聲風格</label><select id="f_vocal"></select></div>
+      <div class="field"><label for="f_language">語言</label><select id="f_language"></select></div>
+    </div>
+
+    <div class="field">
+      <label>樂器編制（可複選）</label>
+      <div class="checkbox-group" id="instrumentGroup"></div>
+    </div>
+
+    <div class="field">
+      <label for="f_lyrics">歌詞內容或主題（選填）</label>
+      <textarea id="f_lyrics" placeholder="可以只填一句歌詞方向，或直接貼上你已經寫好的完整歌詞（用空行分段）"></textarea>
+      <p class="field-hint">只填主題方向時，下方「Lyrics」只會產生段落骨架；已貼上完整歌詞時，會依你勾選的段落標記自動分段。</p>
+    </div>
+
+    <div class="field">
+      <label>歌曲段落（依序，可複選）</label>
+      <div class="checkbox-group" id="structureGroup"></div>
+    </div>
+
+    <div class="field">
+      <label>排除風格（可複選）</label>
+      <div class="checkbox-group" id="excludeGroup"></div>
+    </div>
+
+    <div class="field">
+      <label for="f_excludefree">其他排除風格（選填）</label>
+      <textarea id="f_excludefree" placeholder="例：避免過度電子化的合成人聲"></textarea>
+    </div>
+  </section>
+
+  <section class="panel" id="outputPanel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="badge" id="modeBadge">▦</span><span id="modeTitle">目標</span></div>
+    </div>
+    <p class="panel-hint" id="modeHint"></p>
+
+    <div class="output-actions">
+      <button class="btn primary" id="buildBtn" type="button">🔧 組成提示詞</button>
+      <button class="btn ghost" id="copyAllBtn" type="button">複製全部</button>
+    </div>
+    <div id="outputBlocks" style="margin-top:16px;"></div>
+  </section>
+
+  <section class="panel ai-panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="badge">AI</span>送給 AI 優化（中英對照）</div>
+    </div>
+    <p class="panel-hint">串接你自己的語言模型 API，把曲風與歌詞設定送出，取得針對目前分頁優化過的版本——Suno 分頁會潤飾風格標籤並視情況直接寫出完整歌詞；Gemini 分頁會產出中文＋English 雙語的歌詞草稿與製作建議。</p>
+
+    <details class="api-settings">
+      <summary>API 連線設定</summary>
+      <div class="api-grid">
+        <label>服務商
+          <select id="aiProvider"></select>
+        </label>
+        <label>模型
+          <input type="text" id="aiModel" placeholder="模型名稱">
+        </label>
+        <label class="full">API 金鑰
+          <input type="password" id="aiKey" placeholder="貼上你的 API Key" autocomplete="off">
+        </label>
+      </div>
+      <p class="api-note">金鑰只存在這台電腦的瀏覽器（localStorage），不會送到本工具以外的任何地方；按下「送給 AI 優化」時，曲風與歌詞設定會直接傳送給你選擇的服務商 API。請勿在共用電腦上填寫金鑰。</p>
+    </details>
+
+    <div class="output-actions">
+      <button class="btn gold" id="aiGenerateBtn" type="button">🚀 送給 AI 優化</button>
+      <button class="btn ghost" id="copyAiBtn" type="button">複製 AI 結果</button>
+    </div>
+    <div id="aiReport" class="ai-report" aria-live="polite"></div>
+    <div class="field" style="margin-top:12px;">
+      <label>AI 優化結果（中英對照）</label>
+      <div class="output-box" id="aiOutput"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="badge">REC</span>已儲存的提示詞</div>
+    </div>
+    <p class="panel-hint">把目前這份提示詞（含 AI 優化結果，若有）存成一筆有名字的紀錄，留在這台瀏覽器裡；需要檔案再從清單裡個別下載。</p>
+    <div class="save-row">
+      <input type="text" id="filenameInput" aria-label="儲存名稱" maxlength="80" spellcheck="false" placeholder="幫這筆提示詞取個名字">
+      <button class="btn primary" id="saveBtn" type="button">儲存</button>
+    </div>
+    <div id="savedList"></div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="warn-box">
+    <strong>使用警語</strong>
+    <ul>
+      <li>本工具產生的是「音樂提示詞」，實際生成的音樂內容與品質仍取決於 Suno 或你使用的音樂生成服務，請自行檢查是否符合該服務的條款與政策。</li>
+      <li>本工具不會也不建議輸入任何「模仿特定真實歌手／樂團音色」的描述——這類要求可能違反目標服務條款或衍生著作權疑慮，刻意未提供此類選項。</li>
+      <li>請勿在任何欄位輸入真實個資、機密資料或受著作權保護的他人內容——欄位資料只存在你自己瀏覽器的 localStorage，不會上傳到任何伺服器，但送出給 AI 服務後的隱私仍由該服務條款規範。</li>
+      <li>「送給 AI 優化」需要你自行填入 API 金鑰，該金鑰只存在你的瀏覽器，按下產生時會直接連線到你選擇的服務商，本工具不會經手或保存金鑰，也不會向你收取任何 API 費用——實際費用依你與該服務商的方案計算。</li>
+      <li>AI 產生的歌詞內容可能與既有著作雷同，發布或用於生成音樂前請自行查核；本工具與創作者不對後續生成的音樂內容負責。</li>
+      <li>僅供教學、課程及個人使用，禁止未經授權公開發布、販售或商業化使用。</li>
+    </ul>
+  </div>
+  <div class="footer-meta">
+    <span>製作：Mark Tsai｜<a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a></span>
+    <a href="manual.html">操作手冊 →</a>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ================= 頂部跑馬燈（獨立運作，跟下方主程式邏輯無關；共用工作區既有的公告 Google Sheet） ================= */
+(function () {
+  'use strict';
+  var MARQUEE_CHECK_URL = "https://script.google.com/macros/s/AKfycbwKX0DNNbY8y4nf90BFTHtxgfqJcHHcZasRrgycl4QAe52_hkjMWSkYk4xOsqU-JPCROw/exec";
+  var STORAGE_KEY = 'musicPromptMarquee';
+  var REFRESH_MS = 20 * 60 * 1000;
+
+  var bar = document.getElementById('marqueeBar');
+  var track = document.getElementById('marqueeTrack');
+
+  function loadCache() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (e) { return []; }
+  }
+  function saveCache(items) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch (e) {}
+  }
+  function render(items) {
+    if (!items || !items.length) return;
+    var joined = items.join('　★　');
+    track.textContent = joined + '　★　' + joined;
+    bar.classList.add('show');
+    document.body.classList.add('has-marquee');
+    var width = track.scrollWidth / 2;
+    track.style.animationDuration = Math.max(width / 80, 10) + 's';
+  }
+  function fetchMarquee() {
+    fetch(MARQUEE_CHECK_URL, { method: 'POST', body: JSON.stringify({ serial: '' }) })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data && Array.isArray(data.marquee) && data.marquee.length) {
+          saveCache(data.marquee);
+          render(data.marquee);
+        }
+      })
+      .catch(function () {});
+  }
+
+  render(loadCache());
+  fetchMarquee();
+  setInterval(fetchMarquee, REFRESH_MS);
+})();
+
+/* ================= 序號授權閘門（獨立運作，鎖定整個工具；跟下方主程式邏輯無關） ================= */
+(function () {
+  'use strict';
+  var LICENSE_CHECK_URL = "";
+  var STORAGE_KEY = 'musicPromptSerial';
+  var RECHECK_MS = 20 * 60 * 1000;
+
+  var gate = document.getElementById('licenseGate');
+  var input = document.getElementById('gateSerial');
+  var toggleBtn = document.getElementById('btnGateToggle');
+  var confirmBtn = document.getElementById('btnGateConfirm');
+  var statusEl = document.getElementById('gateStatus');
+
+  function loadSerial() { return localStorage.getItem(STORAGE_KEY) || ''; }
+  function saveSerial(s) { localStorage.setItem(STORAGE_KEY, s); }
+
+  var REASON_LABEL = {
+    missing_serial: '請輸入授權序號',
+    serial_not_found: '查無此授權序號，請確認輸入是否正確',
+    expired: '此序號已逾使用期限',
+    network_error: '無法連線授權伺服器，請檢查網路連線',
+    server_error: '授權伺服器發生錯誤，請稍後再試'
+  };
+
+  function checkLicense(serial, attempt) {
+    attempt = attempt || 1;
+    if (!LICENSE_CHECK_URL) {
+      return Promise.reject(new Error('尚未設定授權伺服器網址，請聯繫工具提供者'));
+    }
+    return fetch(LICENSE_CHECK_URL, {
+      method: 'POST',
+      body: JSON.stringify({ serial: serial }),
+      signal: AbortSignal.timeout(40000)
+    }).catch(function (err) {
+      throw new Error(err.name === 'TimeoutError' ? '授權伺服器回應時間較長，請稍候片刻後再試一次' : '無法連線授權伺服器，請檢查網路連線');
+    }).then(function (resp) {
+      if (!resp.ok) throw new Error('授權伺服器回應異常（' + resp.status + '）');
+      return resp.text();
+    }).then(function (text) {
+      var parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        parsed = null;
+      }
+      if (!parsed || typeof parsed.valid !== 'boolean') {
+        if (attempt < 3) return checkLicense(serial, attempt + 1);
+        throw new Error('授權伺服器回應異常，請稍後再試一次');
+      }
+      return parsed;
+    });
+  }
+
+  function fmtDays(license) {
+    if (!license.expiresAt) return '';
+    var expireStr = new Date(license.expiresAt).toLocaleDateString();
+    var days = Math.ceil((new Date(license.expiresAt) - new Date()) / 86400000);
+    return '剩餘 ' + Math.max(days, 0) + ' 天可用（至 ' + expireStr + '）';
+  }
+
+  function unlock(license) {
+    var label = fmtDays(license) || '序號有效';
+    statusEl.className = 'gate-status ok';
+    statusEl.textContent = '✓ ' + label;
+    gate.classList.add('hidden');
+  }
+
+  function lock(reasonText) {
+    statusEl.className = 'gate-status bad';
+    statusEl.textContent = '✗ ' + reasonText;
+    gate.classList.remove('hidden');
+  }
+
+  function runCheck(serial, opts) {
+    opts = opts || {};
+    if (!serial) {
+      statusEl.className = 'gate-status bad';
+      statusEl.textContent = REASON_LABEL.missing_serial;
+      return Promise.resolve({ valid: false, reason: 'missing_serial' });
+    }
+    if (!opts.silent) {
+      statusEl.className = 'gate-status pending';
+      statusEl.textContent = '驗證中…';
+    }
+    return checkLicense(serial).then(function (license) {
+      if (license.valid) unlock(license);
+      else lock(REASON_LABEL[license.reason] || license.message || '授權序號驗證失敗');
+      return license;
+    }).catch(function (err) {
+      lock(err.message);
+      return { valid: false, reason: 'network_error', message: err.message };
+    });
+  }
+
+  confirmBtn.addEventListener('click', function () {
+    var serial = input.value.trim();
+    saveSerial(serial);
+    runCheck(serial);
+  });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); confirmBtn.click(); }
+  });
+  toggleBtn.addEventListener('click', function () {
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+
+  input.value = loadSerial();
+  if (input.value) runCheck(input.value, { silent: true });
+
+  setInterval(function () {
+    var serial = loadSerial();
+    if (serial) runCheck(serial, { silent: true });
+  }, RECHECK_MS);
+})();
+
+/* ================= 主程式：曲風與歌詞欄位／Suno／Gemini 分頁／提示詞組裝／AI 優化／儲存清單 ================= */
+(function(){
+  'use strict';
+  function $(id){ return document.getElementById(id); }
+  function escapeHtml(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  // fetch() 的 header 值只能是 ISO-8859-1（Latin-1）範圍的字元；貼上金鑰時若不小心夾帶
+  // 中文字、全形符號或其他特殊字元，瀏覽器會直接丟出難懂的底層錯誤，所以先在這裡擋掉並給清楚提示
+  function isLatin1(s){
+    for(var i = 0; i < s.length; i++){ if(s.charCodeAt(i) > 0xFF) return false; }
+    return true;
+  }
+
+  /* ---------- 共用欄位選項：每項附中文標籤（zh，UI 顯示）＋英文提示詞片語（en，Suno 標籤用） ---------- */
+  var GENRE_OPTIONS = [
+    {v:'pop', zh:'流行 Pop', en:'pop'},
+    {v:'citypop', zh:'City Pop 都市流行', en:'city pop, smooth groove'},
+    {v:'mandopop', zh:'華語流行 Mandopop', en:'mandopop, chinese pop'},
+    {v:'ballad', zh:'抒情慢歌 Ballad', en:'ballad, slow emotional pop ballad'},
+    {v:'rnb', zh:'R&B／Soul', en:'r&b, soul'},
+    {v:'hiphop', zh:'Hip-Hop／Rap', en:'hip hop, rap'},
+    {v:'edm', zh:'EDM／Dance Pop', en:'edm, dance pop'},
+    {v:'house', zh:'House／Deep House', en:'house, deep house'},
+    {v:'synthwave', zh:'合成器復古 Synthwave', en:'synthwave, retrowave, 80s synth'},
+    {v:'lofi', zh:'Lo-fi Chillhop', en:'lo-fi hip hop, chillhop'},
+    {v:'indiefolk', zh:'獨立民謠 Indie Folk', en:'indie folk'},
+    {v:'rock', zh:'搖滾 Rock', en:'rock'},
+    {v:'punk', zh:'龐克 Punk Rock', en:'punk rock'},
+    {v:'metal', zh:'重金屬 Metal', en:'heavy metal'},
+    {v:'jazz', zh:'爵士 Jazz', en:'jazz'},
+    {v:'acoustic', zh:'木吉他彈唱 Acoustic', en:'acoustic singer-songwriter'},
+    {v:'guofeng', zh:'國風 Chinese Style', en:'chinese guofeng style, traditional chinese instrumentation'},
+    {v:'kpop', zh:'K-pop 風格', en:'k-pop style'},
+    {v:'reggae', zh:'雷鬼 Reggae', en:'reggae'},
+    {v:'classical', zh:'古典跨界 Classical Crossover', en:'classical crossover'}
+  ];
+  var MOOD_OPTIONS = [
+    {v:'happy', zh:'歡快 Happy', en:'happy, upbeat'},
+    {v:'nostalgic', zh:'懷舊 Nostalgic', en:'nostalgic'},
+    {v:'melancholic', zh:'憂傷 Melancholic', en:'melancholic, bittersweet'},
+    {v:'romantic', zh:'浪漫 Romantic', en:'romantic'},
+    {v:'energetic', zh:'熱血 Energetic', en:'energetic, driving'},
+    {v:'chill', zh:'放鬆 Chill', en:'chill, relaxed'},
+    {v:'dreamy', zh:'夢幻 Dreamy', en:'dreamy, ethereal'},
+    {v:'epic', zh:'史詩磅礴 Epic', en:'epic, cinematic'},
+    {v:'hopeful', zh:'勵志溫暖 Hopeful', en:'hopeful, uplifting'},
+    {v:'dark', zh:'陰暗神秘 Dark', en:'dark, moody'},
+    {v:'playful', zh:'俏皮可愛 Playful', en:'playful, cute'},
+    {v:'bittersweet', zh:'苦樂參半 Bittersweet', en:'bittersweet'}
+  ];
+  var TEMPO_OPTIONS = [
+    {v:'veryslow', zh:'極慢（60-70 BPM）', en:'very slow tempo, 60-70 BPM'},
+    {v:'slow', zh:'慢板（70-90 BPM）', en:'slow tempo, 70-90 BPM'},
+    {v:'mid', zh:'中板（90-110 BPM）', en:'mid-tempo, 90-110 BPM'},
+    {v:'upbeat', zh:'中快板（110-130 BPM）', en:'upbeat tempo, 110-130 BPM'},
+    {v:'fast', zh:'快板（130-150 BPM）', en:'fast tempo, 130-150 BPM'},
+    {v:'veryfast', zh:'極快（150+ BPM）', en:'very fast tempo, 150+ BPM, high energy'}
+  ];
+  var INSTRUMENT_OPTIONS = [
+    {v:'piano', zh:'鋼琴', en:'piano'},
+    {v:'acousticguitar', zh:'木吉他', en:'acoustic guitar'},
+    {v:'electricguitar', zh:'電吉他', en:'electric guitar'},
+    {v:'bass', zh:'貝斯', en:'bass'},
+    {v:'drums', zh:'爵士鼓', en:'drums'},
+    {v:'strings', zh:'弦樂', en:'strings (violin, cello)'},
+    {v:'synthpads', zh:'合成器鋪底', en:'synth pads'},
+    {v:'synthlead', zh:'合成器主音', en:'synth lead'},
+    {v:'brass', zh:'銅管', en:'brass'},
+    {v:'saxophone', zh:'薩克斯風', en:'saxophone'},
+    {v:'flute', zh:'長笛', en:'flute'},
+    {v:'erhu', zh:'二胡', en:'erhu'},
+    {v:'guzheng', zh:'古箏', en:'guzheng'},
+    {v:'bass808', zh:'808 重低音', en:'808 bass'},
+    {v:'drummachine', zh:'電子節拍機', en:'drum machine, electronic beats'}
+  ];
+  var VOCAL_OPTIONS = [
+    {v:'female', zh:'女聲', en:'female vocal'},
+    {v:'male', zh:'男聲', en:'male vocal'},
+    {v:'duet', zh:'男女對唱', en:'male and female duet vocals'},
+    {v:'choir', zh:'合唱／群聲', en:'choir, group vocals'},
+    {v:'rap', zh:'饒舌／口白', en:'rap vocals, spoken word'},
+    {v:'whisper', zh:'氣音私語', en:'whispered vocals, intimate breathy tone'},
+    {v:'belting', zh:'高亢爆發', en:'powerful belting vocals'},
+    {v:'instrumental', zh:'純音樂無歌聲', en:'instrumental only, no vocals'}
+  ];
+  var LANGUAGE_OPTIONS = [
+    {v:'zh', zh:'中文', en:'Mandarin Chinese vocals'},
+    {v:'en', zh:'English', en:'English vocals'},
+    {v:'zhen', zh:'中英混合', en:'mixed Mandarin Chinese and English vocals'},
+    {v:'ja', zh:'日文', en:'Japanese vocals'},
+    {v:'ko', zh:'韓文', en:'Korean vocals'},
+    {v:'none', zh:'無歌詞（純音樂）', en:''}
+  ];
+  var STRUCTURE_OPTIONS = [
+    {v:'intro', zh:'Intro（前奏）', tag:'Intro'},
+    {v:'verse', zh:'Verse（主歌）', tag:'Verse'},
+    {v:'prechorus', zh:'Pre-Chorus（副歌前）', tag:'Pre-Chorus'},
+    {v:'chorus', zh:'Chorus（副歌）', tag:'Chorus'},
+    {v:'bridge', zh:'Bridge（橋段）', tag:'Bridge'},
+    {v:'outro', zh:'Outro（尾奏）', tag:'Outro'}
+  ];
+  var EXCLUDE_OPTIONS = [
+    {v:'repetitive', zh:'過度重複', en:'overly repetitive melody'},
+    {v:'muddy', zh:'混音渾濁', en:'muddy low-fi mix'},
+    {v:'harshvocals', zh:'刺耳失真人聲', en:'harsh distorted vocals'},
+    {v:'autotune', zh:'過度修音', en:'excessive autotune'},
+    {v:'cluttered', zh:'編曲雜亂', en:'cluttered arrangement'},
+    {v:'generic', zh:'罐頭音樂感', en:'generic stock music feel'},
+    {v:'offkey', zh:'走音', en:'off-key vocals'},
+    {v:'explicit', zh:'露骨／不雅內容', en:'explicit content'}
+  ];
+
+  function optFind(list, val){ return list.find(function(o){ return o.v === val; }); }
+  function optZh(list, val){ var o = optFind(list, val); return o ? o.zh : ''; }
+  function optEn(list, val){ var o = optFind(list, val); return o ? o.en : ''; }
+
+  /* ---------- Suno／Gemini 兩個分頁：只定義呈現格式，欄位是共用的 ---------- */
+  var MODES = {
+    suno: {
+      label: 'Suno（自訂模式）', shortEn: 'SUNO · CUSTOM MODE', shortZh: 'Suno',
+      hint: '產生 Suno 自訂模式可直接貼上的三段內容：風格標籤、含段落標記的歌詞、排除風格。',
+      outputBlocks: ['style', 'lyrics', 'exclude']
+    },
+    gemini: {
+      label: 'Gemini（作詞／製作建議協作）', shortEn: 'GEMINI · CO-WRITE', shortZh: 'Gemini',
+      hint: 'Gemini 本身不是音樂生成模型；這段是一句自然語言請求，貼進 Gemini 對話框請它幫你寫歌詞或給製作建議。',
+      outputBlocks: ['paragraph']
+    }
+  };
+  var MODE_ORDER = ['suno', 'gemini'];
+  var BLOCK_LABELS = {
+    suno: {
+      style: 'Style of Music（風格標籤，貼到 Suno 的 Style 欄位）',
+      lyrics: 'Lyrics（歌詞，含段落標記，貼到 Suno 的 Lyrics 欄位）',
+      exclude: 'Exclude Styles（排除風格，選填，貼到 Suno 的 Exclude styles 欄位）'
+    },
+    gemini: {
+      paragraph: '貼給 Gemini 的請求段落'
+    }
+  };
+
+  /* ---------- 內建情境範例（完全虛構，套用時填滿共用欄位） ---------- */
+  var PRESETS = [
+    {name:'City Pop 深夜回憶', title:'霓虹舊街', theme:'深夜城市裡想起舊戀人，帶點懷舊又溫暖的氛圍',
+     genre:['citypop'], mood:['nostalgic','dreamy'], tempo:'mid', instrument:['synthpads','electricguitar','bass'],
+     vocal:'female', language:'zh', structure:['intro','verse','chorus','outro'], lyricsThemeOrText:'', excludeTags:[], excludeFree:''},
+    {name:'抒情慢歌 分手釋懷', title:'如果沒有你', theme:'分手後學會釋懷與祝福',
+     genre:['mandopop','ballad'], mood:['melancholic','romantic'], tempo:'slow', instrument:['piano','strings'],
+     vocal:'female', language:'zh', structure:['intro','verse','prechorus','chorus','bridge','outro'], lyricsThemeOrText:'', excludeTags:['offkey'], excludeFree:''},
+    {name:'EDM 派對能量', title:'Til Sunrise', theme:'派對狂歡、追逐自由的一夜',
+     genre:['edm','house'], mood:['energetic','epic'], tempo:'fast', instrument:['synthlead','bass808','drummachine'],
+     vocal:'male', language:'en', structure:['intro','verse','chorus','bridge','outro'], lyricsThemeOrText:'', excludeTags:['generic'], excludeFree:''},
+    {name:'Mandopop 情歌對唱', title:'重逢那天', theme:'久別重逢後鼓起勇氣告白',
+     genre:['mandopop'], mood:['romantic','bittersweet'], tempo:'mid', instrument:['piano','acousticguitar','strings'],
+     vocal:'duet', language:'zh', structure:['verse','prechorus','chorus','bridge','outro'], lyricsThemeOrText:'', excludeTags:[], excludeFree:''},
+    {name:'Lo-fi 讀書歌單', title:'', theme:'深夜咖啡香伴讀書時光',
+     genre:['lofi'], mood:['chill','dreamy'], tempo:'slow', instrument:['piano','electricguitar','drummachine'],
+     vocal:'instrumental', language:'none', structure:['intro','verse','outro'], lyricsThemeOrText:'', excludeTags:['cluttered'], excludeFree:''}
+  ];
+
+  /* ---------- 狀態：共用欄位（單一物件，非分頁各自獨立）＋各分頁的組成結果／AI 結果 ---------- */
+  var STATE_KEY = 'musicPromptState';
+  var state = loadState();
+  function defaultFields(){
+    return {title:'', theme:'', genre:[], mood:[], tempo:'', instrument:[], vocal:'', language:'',
+            lyricsThemeOrText:'', structure:['intro','verse','chorus','outro'], excludeTags:[], excludeFree:''};
+  }
+  function defaultState(){
+    var assembled = {}, aiOut = {};
+    MODE_ORDER.forEach(function(m){ assembled[m] = {}; aiOut[m] = ''; });
+    return {activeMode: 'suno', fields: defaultFields(), assembled: assembled, aiOutput: aiOut};
+  }
+  function loadState(){
+    try{
+      var raw = JSON.parse(localStorage.getItem(STATE_KEY));
+      if(!raw || !raw.fields) return defaultState();
+      var d = defaultState();
+      Object.assign(d.fields, raw.fields);
+      ['genre','mood','instrument','structure','excludeTags'].forEach(function(k){
+        if(!Array.isArray(d.fields[k])) d.fields[k] = [];
+      });
+      MODE_ORDER.forEach(function(m){
+        if(raw.assembled && typeof raw.assembled[m] === 'object' && raw.assembled[m]) d.assembled[m] = raw.assembled[m];
+        if(raw.aiOutput && typeof raw.aiOutput[m] === 'string') d.aiOutput[m] = raw.aiOutput[m];
+      });
+      if(raw.activeMode && MODES[raw.activeMode]) d.activeMode = raw.activeMode;
+      return d;
+    }catch(e){ return defaultState(); }
+  }
+  function persistState(){
+    try{ localStorage.setItem(STATE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  /* ---------- 分頁切換 ---------- */
+  function renderTabs(){
+    var wrap = $('typeTabs');
+    wrap.innerHTML = MODE_ORDER.map(function(m){
+      var mg = MODES[m];
+      return '<button type="button" class="type-tab' + (m === state.activeMode ? ' active' : '') + '" data-mode="' + m + '">'
+        + '<span class="tt-en">' + escapeHtml(mg.shortEn) + '</span>'
+        + '<span class="tt-zh">' + escapeHtml(mg.shortZh) + '</span>'
+        + '</button>';
+    }).join('');
+    wrap.querySelectorAll('.type-tab').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        state.activeMode = btn.getAttribute('data-mode');
+        persistState();
+        renderTabs();
+        renderModePanel();
+      });
+    });
+  }
+
+  function renderModePanel(){
+    var mg = MODES[state.activeMode];
+    $('modeBadge').textContent = mg.shortZh.length <= 4 ? mg.shortZh : '▦';
+    $('modeTitle').textContent = mg.label;
+    $('modeHint').textContent = mg.hint;
+    renderOutputBlocks();
+    $('aiOutput').textContent = state.aiOutput[state.activeMode] || '';
+  }
+
+  /* ---------- 輸出面板：依分頁的 outputBlocks 陣列渲染 1～3 個可複製區塊 ---------- */
+  function renderOutputBlocks(){
+    var mode = state.activeMode;
+    var cfg = MODES[mode];
+    var labels = BLOCK_LABELS[mode];
+    var assembled = state.assembled[mode] || {};
+    var html = cfg.outputBlocks.map(function(blockKey){
+      var built = Object.prototype.hasOwnProperty.call(assembled, blockKey);
+      var val = assembled[blockKey] || '';
+      var isExcludeEmpty = (mode === 'suno' && blockKey === 'exclude' && built && !val);
+      var displayVal = isExcludeEmpty ? '（未設定排除風格）' : val;
+      return '<div class="field" data-block="' + blockKey + '">'
+        + '<label>' + escapeHtml(labels[blockKey]) + '</label>'
+        + '<div class="output-box' + (isExcludeEmpty ? ' muted' : '') + '" id="ob_' + blockKey + '">' + escapeHtml(displayVal) + '</div>'
+        + (isExcludeEmpty ? '' : '<div class="output-actions"><button type="button" class="chip" data-copy="' + blockKey + '">複製</button></div>')
+        + '</div>';
+    }).join('');
+    $('outputBlocks').innerHTML = html;
+    $('outputBlocks').querySelectorAll('[data-copy]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-copy');
+        copyText((state.assembled[state.activeMode] || {})[key], '還沒有內容可以複製');
+      });
+    });
+  }
+
+  /* ---------- 共用欄位渲染（下拉選單／複選標籤，一次性建立） ---------- */
+  function fillSelect(el, list, placeholder){
+    el.innerHTML = '<option value="">' + escapeHtml(placeholder) + '</option>'
+      + list.map(function(o){ return '<option value="' + o.v + '">' + escapeHtml(o.zh) + '</option>'; }).join('');
+  }
+
+  function renderCheckboxGroup(elId, options, fieldKey){
+    var wrap = $(elId);
+    var list = state.fields[fieldKey];
+    wrap.innerHTML = options.map(function(o){
+      var checked = list.indexOf(o.v) >= 0;
+      return '<label class="checkbox-pill' + (checked ? ' checked' : '') + '" data-v="' + o.v + '">'
+        + '<input type="checkbox" value="' + o.v + '"' + (checked ? ' checked' : '') + '>' + escapeHtml(o.zh)
+        + '</label>';
+    }).join('');
+    wrap.querySelectorAll('.checkbox-pill').forEach(function(pill){
+      pill.addEventListener('click', function(e){
+        e.preventDefault();
+        var v = pill.getAttribute('data-v');
+        var arr = state.fields[fieldKey];
+        var idx = arr.indexOf(v);
+        if(idx >= 0) arr.splice(idx, 1);
+        else arr.push(v);
+        pill.classList.toggle('checked', arr.indexOf(v) >= 0);
+        pill.querySelector('input').checked = arr.indexOf(v) >= 0;
+        persistState();
+      });
+    });
+  }
+
+  function renderFieldsFromState(){
+    $('f_title').value = state.fields.title || '';
+    $('f_theme').value = state.fields.theme || '';
+    $('f_tempo').value = state.fields.tempo || '';
+    $('f_vocal').value = state.fields.vocal || '';
+    $('f_language').value = state.fields.language || '';
+    $('f_lyrics').value = state.fields.lyricsThemeOrText || '';
+    $('f_excludefree').value = state.fields.excludeFree || '';
+    renderCheckboxGroup('genreGroup', GENRE_OPTIONS, 'genre');
+    renderCheckboxGroup('moodGroup', MOOD_OPTIONS, 'mood');
+    renderCheckboxGroup('instrumentGroup', INSTRUMENT_OPTIONS, 'instrument');
+    renderCheckboxGroup('structureGroup', STRUCTURE_OPTIONS, 'structure');
+    renderCheckboxGroup('excludeGroup', EXCLUDE_OPTIONS, 'excludeTags');
+  }
+
+  function initFieldInputs(){
+    fillSelect($('f_tempo'), TEMPO_OPTIONS, '不指定');
+    fillSelect($('f_vocal'), VOCAL_OPTIONS, '不指定');
+    fillSelect($('f_language'), LANGUAGE_OPTIONS, '不指定');
+
+    $('f_title').addEventListener('input', function(){ state.fields.title = this.value; persistState(); });
+    $('f_theme').addEventListener('input', function(){ state.fields.theme = this.value; persistState(); });
+    $('f_tempo').addEventListener('change', function(){ state.fields.tempo = this.value; persistState(); });
+    $('f_vocal').addEventListener('change', function(){ state.fields.vocal = this.value; persistState(); });
+    $('f_language').addEventListener('change', function(){ state.fields.language = this.value; persistState(); });
+    $('f_lyrics').addEventListener('input', function(){ state.fields.lyricsThemeOrText = this.value; persistState(); });
+    $('f_excludefree').addEventListener('input', function(){ state.fields.excludeFree = this.value; persistState(); });
+  }
+
+  function fieldsHasContent(){
+    var f = state.fields;
+    return !!(f.title || f.theme || f.genre.length || f.mood.length || f.tempo || f.instrument.length
+      || f.vocal || f.language || f.lyricsThemeOrText || f.excludeTags.length || f.excludeFree);
+  }
+
+  function showToast(msg){
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  }
+
+  /* ---------- 組成提示詞（純前端組裝，不需金鑰、不連網） ---------- */
+  function lyricsLooksReal(text){
+    var raw = (text || '').trim();
+    if(!raw) return false;
+    var newlineCount = (raw.match(/\n/g) || []).length;
+    return newlineCount >= 2 || raw.length >= 40;
+  }
+
+  function buildStyleBlock(v){
+    var tags = [];
+    v.genre.forEach(function(g){ var e = optEn(GENRE_OPTIONS, g); if(e) tags.push(e); });
+    v.mood.forEach(function(m){ var e = optEn(MOOD_OPTIONS, m); if(e) tags.push(e); });
+    var t = optEn(TEMPO_OPTIONS, v.tempo); if(t) tags.push(t);
+    var vo = optEn(VOCAL_OPTIONS, v.vocal); if(vo) tags.push(vo);
+    var lang = optEn(LANGUAGE_OPTIONS, v.language); if(lang) tags.push(lang);
+    v.instrument.forEach(function(i){ var e = optEn(INSTRUMENT_OPTIONS, i); if(e) tags.push(e); });
+    return tags.join(', ');
+  }
+
+  function buildLyricsBlock(v){
+    var tags = STRUCTURE_OPTIONS.filter(function(o){ return v.structure.indexOf(o.v) >= 0; });
+    if(!tags.length) tags = STRUCTURE_OPTIONS.filter(function(o){ return o.v === 'verse' || o.v === 'chorus'; });
+    var raw = (v.lyricsThemeOrText || '').trim();
+    var lines = [];
+    if(lyricsLooksReal(raw)){
+      var paragraphs = raw.split(/\n\s*\n/).map(function(s){ return s.trim(); }).filter(Boolean);
+      if(paragraphs.length <= 1) paragraphs = raw.split(/\n/).map(function(s){ return s.trim(); }).filter(Boolean);
+      tags.forEach(function(tag, i){
+        lines.push('[' + tag.tag + ']');
+        lines.push(paragraphs[i % paragraphs.length] || '');
+        lines.push('');
+      });
+    } else {
+      var themeNote = raw || (v.theme || '').trim() || '（尚未填寫主題）';
+      tags.forEach(function(tag){
+        lines.push('[' + tag.tag + ']');
+        lines.push('（歌詞主題：' + themeNote + '）');
+        lines.push('');
+      });
+      lines.push('※ 以上為段落骨架，尚未有真正歌詞內容。如需完整歌詞，請改用 Gemini 分頁請 AI 協助創作，或在「送給 AI 優化」填入你的 API 金鑰請 AI 直接產生歌詞內容。');
+    }
+    return lines.join('\n').trim();
+  }
+
+  function buildExcludeBlock(v){
+    var en = [];
+    v.excludeTags.forEach(function(x){ var e = optEn(EXCLUDE_OPTIONS, x); if(e) en.push(e); });
+    if(v.excludeFree && v.excludeFree.trim()) en.push(v.excludeFree.trim());
+    return en.length ? ('Style Exclude: ' + en.join(', ')) : '';
+  }
+
+  function buildGeminiParagraph(v){
+    var genreZh = v.genre.map(function(g){ return optZh(GENRE_OPTIONS, g); }).filter(Boolean);
+    var moodZh = v.mood.map(function(m){ return optZh(MOOD_OPTIONS, m); }).filter(Boolean);
+    var instZh = v.instrument.map(function(i){ return optZh(INSTRUMENT_OPTIONS, i); }).filter(Boolean);
+    var excZh = v.excludeTags.map(function(x){ return optZh(EXCLUDE_OPTIONS, x); }).filter(Boolean);
+    if(v.excludeFree && v.excludeFree.trim()) excZh.push(v.excludeFree.trim());
+    var structTags = STRUCTURE_OPTIONS.filter(function(o){ return v.structure.indexOf(o.v) >= 0; }).map(function(o){ return o.tag; });
+
+    var s = '請幫我構思一首歌';
+    if(v.title && v.title.trim()) s += '，暫定歌名「' + v.title.trim() + '」';
+    s += '：';
+    var descParts = [];
+    if(genreZh.length) descParts.push('風格是' + genreZh.join('、'));
+    if(moodZh.length) descParts.push('情緒偏' + moodZh.join('、'));
+    if(v.theme && v.theme.trim()) descParts.push('主題是「' + v.theme.trim() + '」');
+    if(descParts.length) s += descParts.join('，') + '。';
+
+    var tempoOpt = optFind(TEMPO_OPTIONS, v.tempo);
+    if(tempoOpt) s += '速度大約落在 ' + tempoOpt.zh + '。';
+    var vocalOpt = optFind(VOCAL_OPTIONS, v.vocal);
+    if(vocalOpt) s += '適合' + vocalOpt.zh + '演唱。';
+    var langOpt = optFind(LANGUAGE_OPTIONS, v.language);
+    if(langOpt) s += '語言使用' + langOpt.zh + '。';
+    if(instZh.length) s += '編制建議包含' + instZh.join('、') + '。';
+    if(structTags.length) s += '歌曲段落希望依序包含 ' + structTags.join('、') + '。';
+    if(v.lyricsThemeOrText && v.lyricsThemeOrText.trim()) s += '我目前想到的歌詞方向是：「' + v.lyricsThemeOrText.trim() + '」。';
+    if(excZh.length) s += '請避免' + excZh.join('、') + '。';
+    s += '請先給我一份完整的歌詞草稿（依上面段落標示 [Verse]/[Chorus] 等），再簡短說明這首歌可以怎麼用 Suno 之類的 AI 音樂生成工具製作出來。';
+    return s;
+  }
+
+  function assembleForMode(mode, v){
+    if(mode === 'suno'){
+      return { style: buildStyleBlock(v), lyrics: buildLyricsBlock(v), exclude: buildExcludeBlock(v) };
+    }
+    return { paragraph: buildGeminiParagraph(v) };
+  }
+
+  function assemblePrompt(){
+    var v = state.fields;
+    if(!v.theme || !v.theme.trim()){ showToast('請先填寫歌曲主題再組成提示詞'); return null; }
+    var result = assembleForMode(state.activeMode, v);
+    state.assembled[state.activeMode] = result;
+    persistState();
+    renderOutputBlocks();
+    return result;
+  }
+
+  $('buildBtn').addEventListener('click', function(){
+    var result = assemblePrompt();
+    if(result) showToast('已組成提示詞');
+  });
+
+  function fallbackCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); showToast('已複製到剪貼簿'); }
+    catch(e){ showToast('複製失敗，請手動選取文字'); }
+    document.body.removeChild(ta);
+  }
+  function copyText(text, emptyMsg){
+    if(!text){ showToast(emptyMsg); return; }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ showToast('已複製到剪貼簿'); }).catch(function(){ fallbackCopy(text); });
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  $('copyAllBtn').addEventListener('click', function(){
+    var mode = state.activeMode;
+    var cfg = MODES[mode];
+    var labels = BLOCK_LABELS[mode];
+    var assembled = state.assembled[mode] || {};
+    var text = cfg.outputBlocks.map(function(k){
+      return labels[k] + '\n' + (assembled[k] || '（未設定）');
+    }).join('\n\n');
+    copyText(text, '還沒有組成的提示詞可以複製');
+  });
+  $('copyAiBtn').addEventListener('click', function(){
+    copyText(state.aiOutput[state.activeMode], '還沒有 AI 優化結果可以複製');
+  });
+
+  $('clearBtn').addEventListener('click', function(){
+    if(fieldsHasContent() && !confirm('確定要清空目前所有欄位嗎？此動作無法復原。')) return;
+    state.fields = defaultFields();
+    persistState();
+    renderFieldsFromState();
+  });
+
+  $('presetSelect').addEventListener('change', function(){
+    var idx = this.value;
+    if(idx === '') return;
+    if(fieldsHasContent() && !confirm('套用範例將覆蓋目前已填寫的內容，確定要套用嗎？')){
+      this.value = '';
+      return;
+    }
+    var preset = PRESETS[parseInt(idx, 10)];
+    state.fields = Object.assign(defaultFields(), {
+      title: preset.title || '', theme: preset.theme || '',
+      genre: (preset.genre || []).slice(), mood: (preset.mood || []).slice(),
+      tempo: preset.tempo || '', instrument: (preset.instrument || []).slice(),
+      vocal: preset.vocal || '', language: preset.language || '',
+      lyricsThemeOrText: preset.lyricsThemeOrText || '', structure: (preset.structure || []).slice(),
+      excludeTags: (preset.excludeTags || []).slice(), excludeFree: preset.excludeFree || ''
+    });
+    persistState();
+    renderFieldsFromState();
+    this.value = '';
+    showToast('已套用範例「' + preset.name + '」');
+  });
+
+  function initPresetSelect(){
+    $('presetSelect').innerHTML = '<option value="">— 選擇一個情境快速開始 —</option>'
+      + PRESETS.map(function(p, i){ return '<option value="' + i + '">' + escapeHtml(p.name) + '</option>'; }).join('');
+  }
+
+  /* ---------- BYOK：串接 Claude／OpenAI／Gemini／OpenRouter（金鑰只存本機瀏覽器） ---------- */
+  var AI_PROVIDERS = {
+    claude:     {label:'Claude（Anthropic）',       defaultModel:'claude-opus-4-8'},
+    openai:     {label:'OpenAI',                    defaultModel:'gpt-4o-mini'},
+    gemini:     {label:'Gemini（Google AI Studio）', defaultModel:'gemini-3.5-flash'},
+    openrouter: {label:'OpenRouter',                defaultModel:'openai/gpt-4o-mini'}
+  };
+  var API_STORAGE_KEY = 'musicPromptApiConfig';
+
+  function loadApiConfig(){
+    try{ return JSON.parse(localStorage.getItem(API_STORAGE_KEY)) || {}; }catch(e){ return {}; }
+  }
+  function persistApiConfig(){
+    try{
+      localStorage.setItem(API_STORAGE_KEY, JSON.stringify({
+        provider: $('aiProvider').value,
+        model: $('aiModel').value.trim(),
+        apiKey: $('aiKey').value.trim()
+      }));
+    }catch(e){}
+  }
+  function initAiPanel(){
+    var sel = $('aiProvider');
+    sel.innerHTML = Object.keys(AI_PROVIDERS).map(function(k){
+      return '<option value="' + k + '">' + AI_PROVIDERS[k].label + '</option>';
+    }).join('');
+    var cfg = loadApiConfig();
+    sel.value = (cfg.provider && AI_PROVIDERS[cfg.provider]) ? cfg.provider : 'claude';
+    $('aiModel').value = cfg.model || AI_PROVIDERS[sel.value].defaultModel;
+    $('aiKey').value = cfg.apiKey || '';
+
+    sel.addEventListener('change', function(){
+      var modelEl = $('aiModel');
+      var isDefault = Object.keys(AI_PROVIDERS).some(function(k){ return AI_PROVIDERS[k].defaultModel === modelEl.value.trim(); });
+      if(!modelEl.value.trim() || isDefault) modelEl.value = AI_PROVIDERS[sel.value].defaultModel;
+      persistApiConfig();
+    });
+    $('aiModel').addEventListener('input', persistApiConfig);
+    $('aiKey').addEventListener('input', persistApiConfig);
+  }
+
+  async function callLLM(provider, model, apiKey, prompt, onRetry){
+    var url, headers, body, extract;
+    if(provider === 'claude'){
+      url = 'https://api.anthropic.com/v1/messages';
+      headers = {
+        'content-type': 'application/json', 'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true'
+      };
+      body = {model: model, max_tokens: 4000, messages: [{role: 'user', content: prompt}]};
+      extract = function(d){
+        if(d.stop_reason === 'refusal') throw new Error('模型拒絕了這個請求（refusal）');
+        var t = (d.content || []).filter(function(b){ return b.type === 'text'; }).map(function(b){ return b.text; }).join('');
+        if(!t) throw new Error('回應中沒有文字內容');
+        return t;
+      };
+    } else if(provider === 'openai'){
+      url = 'https://api.openai.com/v1/chat/completions';
+      headers = {'content-type': 'application/json', 'authorization': 'Bearer ' + apiKey};
+      body = {model: model, messages: [{role: 'user', content: prompt}]};
+      extract = function(d){
+        var t = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+        if(!t) throw new Error('回應中沒有文字內容');
+        return t;
+      };
+    } else if(provider === 'gemini'){
+      url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+      headers = {'content-type': 'application/json', 'x-goog-api-key': apiKey};
+      body = {contents: [{parts: [{text: prompt}]}]};
+      extract = function(d){
+        var parts = (d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [];
+        var t = parts.map(function(p){ return p.text || ''; }).join('');
+        if(!t) throw new Error('回應中沒有文字內容');
+        return t;
+      };
+    } else if(provider === 'openrouter'){
+      url = 'https://openrouter.ai/api/v1/chat/completions';
+      headers = {'content-type': 'application/json', 'authorization': 'Bearer ' + apiKey};
+      body = {model: model, messages: [{role: 'user', content: prompt}]};
+      extract = function(d){
+        var t = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+        if(!t) throw new Error('回應中沒有文字內容');
+        return t;
+      };
+    } else {
+      throw new Error('不支援的服務商');
+    }
+
+    var RETRYABLE = {429:1, 500:1, 503:1, 529:1};
+    var MAX_TRIES = 3;
+    for(var attempt = 1; attempt <= MAX_TRIES; attempt++){
+      var resp = await fetch(url, {method: 'POST', headers: headers, body: JSON.stringify(body), signal: AbortSignal.timeout(180000)});
+      var raw = await resp.text();
+      if(resp.ok) return extract(JSON.parse(raw));
+      var msg = raw.slice(0, 300);
+      try{
+        var err = JSON.parse(raw);
+        msg = (err.error && err.error.message) || err.message || msg;
+      }catch(e){}
+      if(RETRYABLE[resp.status] && attempt < MAX_TRIES){
+        var waitSec = attempt * 8;
+        if(onRetry) onRetry(attempt, resp.status, waitSec);
+        await new Promise(function(r){ setTimeout(r, waitSec * 1000); });
+        continue;
+      }
+      if(resp.status === 404) msg += '——這通常表示模型名稱錯誤或已停用，請到該服務商的模型列表確認目前可用的模型 ID';
+      if(RETRYABLE[resp.status]) msg += '——已自動重試 ' + (MAX_TRIES - 1) + ' 次仍失敗，多為服務商暫時過載，請稍候幾分鐘再試，或更換模型／服務商';
+      throw new Error('API 回應 ' + resp.status + '：' + msg);
+    }
+  }
+
+  /* ---------- 送給 AI 優化的請求內容：依分頁附上不同的輸出格式規則，並要求中英對照 ---------- */
+  function aiPromptForMode(mode, v){
+    if(mode === 'suno'){
+      var styleTags = buildStyleBlock(v);
+      var raw = (v.lyricsThemeOrText || '').trim();
+      var langOpt = optFind(LANGUAGE_OPTIONS, v.language);
+      var langZh = langOpt ? langOpt.zh : '中文';
+      var lines = [];
+      lines.push('你是一位專業的音樂製作與作詞顧問。請根據下面的設定，協助優化這首歌要貼給 Suno 自訂模式使用的內容。');
+      lines.push('');
+      lines.push('目前組好的風格標籤（英文，供 Suno 的 Style of Music 使用）：' + (styleTags || '（尚未設定）'));
+      if(lyricsLooksReal(raw)){
+        lines.push('這是使用者已經寫好或貼上的歌詞草稿，請幫我潤飾但盡量保留原意與段落標記：');
+        lines.push(raw);
+      } else {
+        lines.push('目前歌詞只是主題骨架，尚未有實際歌詞內容，主題是：' + (raw || v.theme || '') + '，請直接幫我用「' + langZh + '」寫出完整歌詞，並保留 [Verse]/[Chorus] 等段落標記。');
+      }
+      lines.push('');
+      lines.push('輸出規則：');
+      lines.push('1. 先輸出一段「中文說明」，簡短說明你做了哪些調整；');
+      lines.push('2. 接著另起一行輸出分隔線 "---"；');
+      lines.push('3. 輸出「Style Tags」區塊：潤飾後的英文風格標籤（逗號分隔）；');
+      lines.push('4. 再輸出分隔線 "---"；');
+      lines.push('5. 輸出「Lyrics」區塊：完整歌詞內容（維持所選語言，段落標記維持 [Verse]/[Chorus] 等格式）。');
+      lines.push('請勿輸出除了中文說明、分隔線、Style Tags、Lyrics 以外的其他內容。');
+      return lines.join('\n');
+    }
+    var paragraph = buildGeminiParagraph(v);
+    var lines2 = [];
+    lines2.push('你是一位雙語（中文／English）的音樂創作顧問。請根據下面這段需求，協助構思這首歌。');
+    lines2.push('');
+    lines2.push('需求：' + paragraph);
+    lines2.push('');
+    lines2.push('輸出規則：');
+    lines2.push('1. 先用中文完整回覆：歌詞草稿（依段落標記）＋簡短製作建議；');
+    lines2.push('2. 接著輸出分隔線 "---"；');
+    lines2.push('3. 再輸出對應的 English 版本（歌詞翻譯或改寫＋製作建議），方便需要時提供給英語協作者或國際版 Suno 使用。');
+    lines2.push('請勿輸出除了中文版、分隔線、English 版以外的其他內容。');
+    return lines2.join('\n');
+  }
+
+  $('aiGenerateBtn').addEventListener('click', async function(){
+    var provider = $('aiProvider').value;
+    var model = $('aiModel').value.trim();
+    var apiKey = $('aiKey').value.trim();
+    var report = $('aiReport');
+
+    if(!apiKey){ report.innerHTML = '<div class="bad">請先在「API 連線設定」填入 API 金鑰</div>'; return; }
+    if(!model){ report.innerHTML = '<div class="bad">請填入模型名稱</div>'; return; }
+    if(!isLatin1(apiKey)){ report.innerHTML = '<div class="bad">API 金鑰包含不可用的字元（可能複製時夾帶了多餘的符號、中文字或全形空白），請重新確認只貼上金鑰本身，前後不要有其他文字</div>'; return; }
+    if(!isLatin1(model)){ report.innerHTML = '<div class="bad">模型名稱包含不可用的字元，請確認只填入英數字模型 ID</div>'; return; }
+
+    var v = state.fields;
+    if(!v.theme || !v.theme.trim()){ report.innerHTML = '<div class="bad">請先填寫歌曲主題</div>'; return; }
+
+    var promptForAi = aiPromptForMode(state.activeMode, v);
+
+    persistApiConfig();
+    var btn = $('aiGenerateBtn');
+    btn.disabled = true;
+    report.innerHTML = '<div class="ok">呼叫 ' + AI_PROVIDERS[provider].label + '（' + escapeHtml(model) + '）中，請稍候…</div>';
+    try{
+      var text = await callLLM(provider, model, apiKey, promptForAi, function(attempt, status, waitSec){
+        report.innerHTML = '<div class="warn">API 回應 ' + status + '（服務商暫時過載／限流），' + waitSec + ' 秒後自動重試（第 ' + attempt + '／2 次）…</div>';
+      });
+      state.aiOutput[state.activeMode] = text;
+      persistState();
+      $('aiOutput').textContent = text;
+      report.innerHTML = '<div class="ok">已產生優化結果，請自行檢查後再使用。</div>';
+    }catch(err){
+      var msg;
+      if(err.name === 'TimeoutError') msg = '請求逾時（180秒），請重試或換模型';
+      else if(/ISO-8859-1|non.*code point/i.test(err.message || '')) msg = 'API 金鑰或模型名稱包含不可用的字元（可能複製時夾帶了多餘的符號或中文字），請重新確認貼上的內容只有金鑰／模型 ID 本身';
+      else msg = err.message;
+      report.innerHTML = '<div class="bad">產生失敗：' + escapeHtml(msg) + '</div>';
+    }finally{
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------- 已儲存的提示詞（localStorage 清單，非檔案下載） ---------- */
+  var SAVED_KEY = 'musicPromptSavedItems';
+  function sanitizeFilename(name){ return name.replace(/[\\/:*?"<>|]/g, '').trim(); }
+  function loadSaved(){ try{ return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; }catch(e){ return []; } }
+  function persistSaved(list){ try{ localStorage.setItem(SAVED_KEY, JSON.stringify(list)); }catch(e){} }
+  function formatSavedDate(ts){
+    var d = new Date(ts);
+    function pad(n){ return String(n).length < 2 ? '0' + n : String(n); }
+    return d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function itemFullText(item){
+    var labels = BLOCK_LABELS[item.mode] || {};
+    var cfg = MODES[item.mode];
+    var text = cfg ? cfg.outputBlocks.map(function(k){
+      return labels[k] + '\n' + ((item.blocks || {})[k] || '（未設定）');
+    }).join('\n\n') : '';
+    if(item.aiOutput) text += '\n\n---- AI 優化結果 ----\n\n' + item.aiOutput;
+    return text;
+  }
+  function renderSavedList(){
+    var list = loadSaved();
+    var container = $('savedList');
+    if(!list.length){
+      container.innerHTML = '<p class="saved-empty">尚未儲存任何提示詞——組成提示詞後，在上面取個名字按「儲存」。</p>';
+      return;
+    }
+    var sorted = list.slice().sort(function(a, b){ return b.savedAt - a.savedAt; });
+    container.innerHTML = sorted.map(function(item){
+      var typeLabel = (MODES[item.mode] && MODES[item.mode].shortZh) || item.mode;
+      return '<div class="saved-item">'
+        + '<div class="saved-item-main">'
+        + '<div class="saved-item-name">[' + escapeHtml(typeLabel) + '] ' + escapeHtml(item.name) + '</div>'
+        + '<div class="saved-item-meta">' + formatSavedDate(item.savedAt) + (item.aiOutput ? '　·　含 AI 優化結果' : '') + '</div>'
+        + '</div>'
+        + '<div class="saved-item-actions">'
+        + '<button type="button" class="chip" data-action="load" data-id="' + item.id + '">載入</button>'
+        + '<button type="button" class="chip" data-action="copy" data-id="' + item.id + '">複製</button>'
+        + '<button type="button" class="chip" data-action="download" data-id="' + item.id + '">下載 .txt</button>'
+        + '<button type="button" class="chip" data-action="delete" data-id="' + item.id + '">刪除</button>'
+        + '</div></div>';
+    }).join('');
+  }
+
+  $('saveBtn').addEventListener('click', function(){
+    var blocks = state.assembled[state.activeMode];
+    var hasAny = blocks && Object.keys(blocks).some(function(k){ return blocks[k]; });
+    if(!hasAny){ showToast('請先組成提示詞再儲存'); return; }
+    var name = sanitizeFilename($('filenameInput').value.trim());
+    if(!name){
+      name = sanitizeFilename((state.fields.theme || '').slice(0, 20)) || (MODES[state.activeMode].shortZh + '提示詞');
+    }
+    var list = loadSaved();
+    var existing = list.find(function(it){ return it.name === name && it.mode === state.activeMode; });
+    if(existing && !confirm('已經有一筆叫做「' + name + '」的紀錄，要覆蓋它嗎？')) return;
+    var record = {
+      mode: state.activeMode, name: name, savedAt: Date.now(),
+      fieldValues: JSON.parse(JSON.stringify(state.fields)), blocks: JSON.parse(JSON.stringify(blocks)),
+      aiOutput: state.aiOutput[state.activeMode] || ''
+    };
+    if(existing){
+      Object.assign(existing, record);
+    } else {
+      record.id = 'p' + Date.now() + Math.random().toString(36).slice(2, 7);
+      list.push(record);
+    }
+    persistSaved(list);
+    renderSavedList();
+    $('filenameInput').value = name;
+    showToast('已儲存「' + name + '」');
+  });
+
+  $('savedList').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-action]');
+    if(!btn) return;
+    var action = btn.getAttribute('data-action');
+    var id = btn.getAttribute('data-id');
+    var list = loadSaved();
+    var idx = list.findIndex(function(it){ return it.id === id; });
+    if(idx < 0) return;
+    var item = list[idx];
+
+    if(action === 'load'){
+      if(!MODES[item.mode]){ showToast('找不到對應的分頁'); return; }
+      if(fieldsHasContent() && !confirm('載入「' + item.name + '」將覆蓋目前欄位內容，確定嗎？')) return;
+      state.activeMode = item.mode;
+      state.fields = Object.assign(defaultFields(), item.fieldValues || {});
+      state.assembled[item.mode] = item.blocks || {};
+      state.aiOutput[item.mode] = item.aiOutput || '';
+      persistState();
+      renderTabs();
+      renderModePanel();
+      renderFieldsFromState();
+      $('filenameInput').value = item.name;
+      showToast('已載入「' + item.name + '」');
+    } else if(action === 'copy'){
+      copyText(itemFullText(item), '沒有內容可以複製');
+    } else if(action === 'download'){
+      var text2 = itemFullText(item);
+      var name2 = sanitizeFilename(item.name) || 'prompt';
+      var blob = new Blob([text2], {type: 'text/plain;charset=utf-8'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name2 + '.txt';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('已下載「' + name2 + '.txt」');
+    } else if(action === 'delete'){
+      if(!confirm('確定要刪除「' + item.name + '」嗎？此動作無法復原。')) return;
+      list.splice(idx, 1);
+      persistSaved(list);
+      renderSavedList();
+      showToast('已刪除「' + item.name + '」');
+    }
+  });
+
+  /* ---------- 初始化 ---------- */
+  initFieldInputs();
+  initPresetSelect();
+  renderFieldsFromState();
+  renderTabs();
+  renderModePanel();
+  renderSavedList();
+  initAiPanel();
+})();
+</script>
+
+</body>
+</html>
