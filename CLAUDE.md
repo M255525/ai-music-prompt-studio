@@ -22,10 +22,11 @@
 
 比照 `ai-image-prompt-studio/index.html`（2026-08-12 最新模式）「單一工具、整個鎖住」的做法：`#licenseGate` 全螢幕遮罩預設鎖定，驗證通過才加上 `.hidden`；載入時一律對後端即時重驗（不只信任 localStorage 快取），背景每 20 分鐘重驗一次，過期會自動重新鎖住整個頁面。`localStorage` key：`musicPromptSerial`。
 
-- `Code.gs` — 部署到 Google Sheet 的 Apps Script 原始碼：`doPost` 只做序號驗證＋首次自動啟用，`doGet` 供部署後測試。`VALID_AMOUNT = 12`（月）。這不是這個資料夾裡的檔案在跑，是使用者手動複製貼到 Google Sheet 的「擴充功能 → Apps Script」編輯器裡部署成 Web App，取得網址後回填到 `index.html` 的 `LICENSE_CHECK_URL`。部署步驟見 `SETUP-授權伺服器設定.md`。
+- `Code.gs` — 部署到 Google Sheet 的 Apps Script 原始碼：`doPost` 只做序號驗證＋首次自動啟用，`doGet` 供部署後測試。`VALID_AMOUNT = 12`（月）。這不是這個資料夾裡的檔案在跑，是使用者手動貼到 Google Sheet 的「擴充功能 → Apps Script」編輯器裡（實際部署走 `clasp push`，見下）部署成 Web App，取得網址後回填到 `index.html` 的 `LICENSE_CHECK_URL`。部署步驟見 `SETUP-授權伺服器設定.md`。
 - **這支後端只做序號驗證，不代理任何付費 API**（本工具的 LLM 串接是 BYOK，前端直連使用者自己的服務商 API，跟序號系統無關），也**不處理跑馬燈**（見下）。
-- **綁定的 Google Sheet 是全新建立、專屬本工具的表**（跟 `ai-image-prompt-studio` 沿用既有任務追蹤表不同，這次使用者確認要新建乾淨的一份）：<https://docs.google.com/spreadsheets/d/1ZfinIvYmOpZG0yN62sl9xBDKRiY2K7ZvBEb4MWp-hJQ/edit>（已建立，2026-08-12）。**這份表同一分頁裡疊了三個表格**（套用範本時貼了三次），只有最下面那個表格有「序號／開始日期／結束日期」欄位並已有一筆測試列（`mark0131`，效期到 2026/9/30）——`Code.gs` 的 `findHeaderRow_()` 會掃描整份工作表找出真正含有這三個表頭的那一列，不假設表頭在第一列，這個表結構才能正常運作；改動 `checkOrActivate()` 時務必保留這個掃描邏輯，不要簡化回「表頭固定在 `values[0]`」的寫法。**Apps Script 本身尚未部署。**
-- **目前狀態：`LICENSE_CHECK_URL = ""`（佔位，刻意 fail-closed）**。頁面會顯示「尚未設定授權伺服器網址」並保持鎖定，這是預期行為，不是 bug。待使用者完成部署步驟（見 `SETUP-授權伺服器設定.md`：開啟上面的 Sheet → 擴充功能 → Apps Script → 貼上 `Code.gs` → 部署為 Web App → 完成 OAuth 同意畫面，這一步無法自動化）並回報 exec 網址後，才會回填到 `index.html` 並驗證。**測試欄位/分頁/AI/儲存清單等其他功能時，可在瀏覽器 devtools 手動對 `#licenseGate` 加上 `hidden` class 暫時繞過。**
+- **綁定的 Google Sheet 是全新建立、專屬本工具的表**（跟 `ai-image-prompt-studio` 沿用既有任務追蹤表不同，這次使用者確認要新建乾淨的一份）：<https://docs.google.com/spreadsheets/d/1ZfinIvYmOpZG0yN62sl9xBDKRiY2K7ZvBEb4MWp-hJQ/edit>（已建立，2026-08-12）。**這份試算表有好幾個分頁，序號／開始日期／結束日期欄位不在第一個分頁**（用 Google Drive 內容讀取工具一次看到的「多個表格」其實是分頁各自的內容被串接顯示，不是同一分頁疊table；`getDataRange()` 只會抓「當前那一個分頁」）——`Code.gs` 的 `findLicenseSheet_()` 因此改成**掃描試算表裡的每一個分頁**（`ss.getSheets()`，不是只看 `getSheets()[0]`），每個分頁再用 `findHeaderRow_()` 找出含「序號／開始日期／結束日期」三個表頭文字的那一列，找到第一個符合的分頁就用它。改動 `checkOrActivate()` 時務必保留這個「掃全部分頁＋掃表頭列」的兩層邏輯，不要簡化回「固定第一分頁、表頭固定在 `values[0]`」的寫法——這是實際部署時真的踩到、且會讓 `doPost` 回傳看似合理但其實是「找不到表頭」的 `server_error` 訊息（不是明顯的崩潰，容易被忽略）。
+- **已完成部署（2026-08-13）**。實際部署走 `clasp`：複製貼上到 Apps Script 網頁編輯器出現語法錯誤（已知的剪貼簿踩坑，`node --check` 確認本機檔案語法正確），改用 `npm install -g @google/clasp` → 使用者自己在對話框用 `! clasp login` 完成 OAuth → 使用者從 Apps Script 編輯器「專案設定」複製 Script ID → `clasp clone <scriptId>` 到暫用資料夾 `_clasp-deploy/`（事後已刪除）→ `clasp push --force` 推送 → 使用者手動完成「部署 → 新增部署作業 → 網頁應用程式」＋ OAuth 同意畫面。`index.html` 的 `LICENSE_CHECK_URL` 已填入實際部署網址：`https://script.google.com/macros/s/AKfycbyrC_Pmy8GqSI3LsEeXQOyGrwMikhTX1k_3_u8UJXgEog1nKirm63NHbw2ZWMavl6x4/exec`。`doGet`／`doPost` 皆已用瀏覽器／Node `fetch()` 驗證正常（真序號 `mark0131` 回傳 `valid:true`＋到期日 2026/9/30；假序號回傳 `serial_not_found`；實際透過閘門 UI 解鎖也驗證過）。
+- **踩坑記錄**：每次「管理部署作業 → 編輯 → 新版本 → 部署」完成後，緊接著的第一次請求有機率短暫回傳 Google Drive 的「找不到網頁」錯誤頁（HTTP 404），不是部署失敗，等幾秒重試就恢復正常——這是部署更新的傳播延遲，不要誤判成部署壞掉就重新走一次部署流程。
 
 ## 頂部共用跑馬燈
 
@@ -56,11 +57,9 @@ node --check _check.js
 
 ## GitHub 與線上部署
 
-公開 repo：<https://github.com/M255525/ai-music-prompt-studio>（與 `ai-image-prompt-studio`／`ai-prompt-generator` 同樣模式，已建立並 push）。`.github/workflows/deploy-pages.yml` 已備妥（觸發分支 `master`），**GitHub Pages 尚未啟用**——待啟用後線上網址會是 <https://m255525.github.io/ai-music-prompt-studio/>。
+公開 repo：<https://github.com/M255525/ai-music-prompt-studio>（與 `ai-image-prompt-studio`／`ai-prompt-generator` 同樣模式，已建立並 push）。`.github/workflows/deploy-pages.yml` 已備妥（觸發分支 `master`），GitHub Pages 已啟用（`gh api repos/.../pages -X POST -f build_type=workflow`），線上網址：<https://m255525.github.io/ai-music-prompt-studio/>。
 
 ## 本次未做（後續視需要再處理）
 
-- 授權用 Google Sheet 已建立，但 **Apps Script 尚未部署**，`LICENSE_CHECK_URL` 是空字串佔位——待使用者完成 `SETUP-授權伺服器設定.md` 的部署步驟並回報 exec 網址。
-- GitHub Pages 尚未啟用（repo 已建立並 push，見下）。
 - 桌面版 exe 未打包（`launcher.py` 已就緒，PORT 8790，之後要打包比照 `ai-image-prompt-studio` 的 PyInstaller 指令）。
 - 根目錄 `專案目錄.docx` 尚未加入本專案的列。

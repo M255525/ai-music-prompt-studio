@@ -12,9 +12,10 @@
  * 「開始日期」「結束日期」留空——序號第一次被驗證時會自動寫入
  * （開始日期＝當下時間，結束日期＝開始日期 + 12 個月）。
  *
- * 表頭列不需要在第 1 列——程式會掃描整份工作表，找出「同一列同時包含
- * 序號／開始日期／結束日期」三個表頭文字的那一列當作表頭（例如同一個分頁裡
- * 上方還疊放其他不相干的表格時也能正確運作），再從下一列開始比對序號。
+ * 表頭列不需要在第 1 列、也不需要在第一個分頁——程式會掃描這份試算表的
+ * 「每一個分頁」，找出「同一列同時包含 序號／開始日期／結束日期」三個表頭文字
+ * 的那一列當作表頭（實測過使用者的 Sheet 同一份檔案裡有好幾個分頁，序號資料
+ * 不在第一個分頁），找到就用那個分頁；若 SHEET_NAME 有指定，則只掃描該分頁。
  *
  * 這支後端只負責序號驗證，不代理任何付費 API（本工具的 LLM 串接走使用者自備金鑰 BYOK，
  * 前端直連服務商官方 API），也不處理跑馬燈——跑馬燈內容抓自工作區既有的共用授權伺服器，
@@ -25,7 +26,7 @@ const VALID_AMOUNT = 12;
 const COL_SERIAL = "序號";
 const COL_START = "開始日期";
 const COL_END = "結束日期";
-// 若序號資料不在第一個工作表，把分頁名稱填在這裡；留空則自動用第一個工作表
+// 若序號資料只會在特定分頁，把分頁名稱填在這裡；留空則自動掃描所有分頁找出表頭
 const SHEET_NAME = "";
 
 function doPost(e) {
@@ -50,11 +51,6 @@ function doGet(e) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-function getLicenseSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  return (SHEET_NAME && ss.getSheetByName(SHEET_NAME)) || ss.getSheets()[0];
-}
-
 function findHeaderRow_(values) {
   for (let i = 0; i < values.length; i++) {
     const row = values[i];
@@ -65,26 +61,41 @@ function findHeaderRow_(values) {
   return -1;
 }
 
+// 掃描整份試算表的每一個分頁，回傳「序號／開始日期／結束日期」表頭所在的
+// 分頁與資料，不假設序號資料放在第一個分頁或第一列
+function findLicenseSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = SHEET_NAME
+    ? [ss.getSheetByName(SHEET_NAME)].filter(function (s) { return s; })
+    : ss.getSheets();
+  for (const sheet of sheets) {
+    const values = sheet.getDataRange().getValues();
+    const headerRowIdx = findHeaderRow_(values);
+    if (headerRowIdx >= 0) {
+      return { sheet: sheet, values: values, headerRowIdx: headerRowIdx };
+    }
+  }
+  return null;
+}
+
 function checkOrActivate(serial) {
   // LockService 避免多人同時第一次驗證同一組序號時，開卡時間被寫兩次、算出不同的到期日
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const sheet = getLicenseSheet_();
-    const values = sheet.getDataRange().getValues();
-    if (values.length < 2) return { valid: false, reason: "serial_not_found" };
-
-    const headerRowIdx = findHeaderRow_(values);
-    if (headerRowIdx < 0) {
-      return { valid: false, reason: "server_error", message: "整份工作表找不到同時包含「" + COL_SERIAL + "」「" + COL_START + "」「" + COL_END + "」的表頭列" };
+    const found = findLicenseSheet_();
+    if (!found) {
+      return { valid: false, reason: "server_error", message: "所有分頁都找不到同時包含「" + COL_SERIAL + "」「" + COL_START + "」「" + COL_END + "」的表頭列" };
     }
-    const header = values[headerRowIdx];
+    const sheet = found.sheet;
+    const values = found.values;
+    const header = values[found.headerRowIdx];
     const colSerial = header.indexOf(COL_SERIAL);
     const colStart = header.indexOf(COL_START);
     const colEnd = header.indexOf(COL_END);
 
     let rowIdx = -1;
-    for (let i = headerRowIdx + 1; i < values.length; i++) {
+    for (let i = found.headerRowIdx + 1; i < values.length; i++) {
       if (String(values[i][colSerial]).trim() === serial) { rowIdx = i; break; }
     }
     if (rowIdx === -1) return { valid: false, reason: "serial_not_found" };
