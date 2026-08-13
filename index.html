@@ -282,7 +282,7 @@
     <div class="field">
       <label for="f_lyrics">歌詞內容或主題（選填）</label>
       <textarea id="f_lyrics" placeholder="可以只填一句歌詞方向，或直接貼上你已經寫好的完整歌詞（用空行分段）"></textarea>
-      <p class="field-hint">只填主題方向時，下方「Lyrics」只會產生段落骨架；已貼上完整歌詞時，會依你勾選的段落標記自動分段。</p>
+      <p class="field-hint">只填主題方向時，下方「Lyrics」只會產生段落骨架；已貼上完整歌詞時，會依你勾選的段落標記自動分段。若「人聲風格」選純音樂無歌聲、或「語言」選無歌詞，這欄會被忽略，改為產生製作建議。</p>
     </div>
 
     <div class="field">
@@ -293,11 +293,14 @@
     <div class="field">
       <label>排除風格（可複選）</label>
       <div class="checkbox-group" id="excludeGroup"></div>
+      <p class="field-hint">音樂品質面的排除，例如過度重複、混音渾濁。</p>
     </div>
 
     <div class="field">
-      <label for="f_excludefree">其他排除風格（選填）</label>
+      <label for="f_excludefree">其他排除風格（可複選／可自訂文字，選填）</label>
+      <div class="checkbox-group" id="excludeStyleGroup" style="margin-bottom:10px;"></div>
       <textarea id="f_excludefree" placeholder="例：避免過度電子化的合成人聲"></textarea>
+      <p class="field-hint">曲風/元素面的排除，例如不要重金屬、不要饒舌；沒列到的可以在下方文字框自行補充。</p>
     </div>
   </section>
 
@@ -653,6 +656,17 @@
     {v:'offkey', zh:'走音', en:'off-key vocals'},
     {v:'explicit', zh:'露骨／不雅內容', en:'explicit content'}
   ];
+  // 曲風／元素面的排除（跟上面 EXCLUDE_OPTIONS 的音樂品質面排除是不同維度，分開一組勾選）
+  var EXCLUDE_STYLE_OPTIONS = [
+    {v:'ex_metal', zh:'重金屬／嘶吼', en:'heavy metal, screamo vocals'},
+    {v:'ex_rap', zh:'饒舌／嘻哈元素', en:'rap, hip hop elements'},
+    {v:'ex_edm', zh:'電子舞曲／夜店節奏', en:'edm, club beats'},
+    {v:'ex_classical', zh:'古典／歌劇美聲', en:'classical, operatic vocals'},
+    {v:'ex_country', zh:'鄉村風格', en:'country style'},
+    {v:'ex_children', zh:'兒歌／童謠感', en:"children's music, nursery rhyme feel"},
+    {v:'ex_jazz', zh:'爵士即興', en:'jazz improvisation'},
+    {v:'ex_punk', zh:'龐克／粗噪吉他', en:'punk, raw distorted guitar'}
+  ];
 
   function optFind(list, val){ return list.find(function(o){ return o.v === val; }); }
   function optZh(list, val){ var o = optFind(list, val); return o ? o.zh : ''; }
@@ -707,8 +721,9 @@
   var state = loadState();
   function defaultFields(){
     return {title:'', theme:'', genre:[], mood:[], tempo:'', instrument:[], vocal:'', language:'',
-            lyricsThemeOrText:'', structure:['intro','verse','chorus','outro'], excludeTags:[], excludeFree:''};
+            lyricsThemeOrText:'', structure:['intro','verse','chorus','outro'], excludeTags:[], excludeStyles:[], excludeFree:''};
   }
+  function isInstrumental(v){ return v.vocal === 'instrumental' || v.language === 'none'; }
   function defaultState(){
     var assembled = {}, aiOut = {};
     MODE_ORDER.forEach(function(m){ assembled[m] = {}; aiOut[m] = ''; });
@@ -720,7 +735,7 @@
       if(!raw || !raw.fields) return defaultState();
       var d = defaultState();
       Object.assign(d.fields, raw.fields);
-      ['genre','mood','instrument','structure','excludeTags'].forEach(function(k){
+      ['genre','mood','instrument','structure','excludeTags','excludeStyles'].forEach(function(k){
         if(!Array.isArray(d.fields[k])) d.fields[k] = [];
       });
       MODE_ORDER.forEach(function(m){
@@ -833,6 +848,7 @@
     renderCheckboxGroup('instrumentGroup', INSTRUMENT_OPTIONS, 'instrument');
     renderCheckboxGroup('structureGroup', STRUCTURE_OPTIONS, 'structure');
     renderCheckboxGroup('excludeGroup', EXCLUDE_OPTIONS, 'excludeTags');
+    renderCheckboxGroup('excludeStyleGroup', EXCLUDE_STYLE_OPTIONS, 'excludeStyles');
   }
 
   function initFieldInputs(){
@@ -852,7 +868,7 @@
   function fieldsHasContent(){
     var f = state.fields;
     return !!(f.title || f.theme || f.genre.length || f.mood.length || f.tempo || f.instrument.length
-      || f.vocal || f.language || f.lyricsThemeOrText || f.excludeTags.length || f.excludeFree);
+      || f.vocal || f.language || f.lyricsThemeOrText || f.excludeTags.length || f.excludeStyles.length || f.excludeFree);
   }
 
   function showToast(msg){
@@ -877,12 +893,18 @@
     v.mood.forEach(function(m){ var e = optEn(MOOD_OPTIONS, m); if(e) tags.push(e); });
     var t = optEn(TEMPO_OPTIONS, v.tempo); if(t) tags.push(t);
     var vo = optEn(VOCAL_OPTIONS, v.vocal); if(vo) tags.push(vo);
-    var lang = optEn(LANGUAGE_OPTIONS, v.language); if(lang) tags.push(lang);
+    // 純音樂沒有人聲，語言標籤（描述演唱語言）在這種情況下沒有意義、會跟「no vocals」互相矛盾，故略過
+    if(!isInstrumental(v)){
+      var lang = optEn(LANGUAGE_OPTIONS, v.language); if(lang) tags.push(lang);
+    }
     v.instrument.forEach(function(i){ var e = optEn(INSTRUMENT_OPTIONS, i); if(e) tags.push(e); });
     return tags.join(', ');
   }
 
   function buildLyricsBlock(v){
+    if(isInstrumental(v)){
+      return '（已選擇純音樂／無歌聲，這首不需要歌詞。若要改回有人聲版本，請調整上方「人聲風格」或「語言」欄位。）';
+    }
     var tags = STRUCTURE_OPTIONS.filter(function(o){ return v.structure.indexOf(o.v) >= 0; });
     if(!tags.length) tags = STRUCTURE_OPTIONS.filter(function(o){ return o.v === 'verse' || o.v === 'chorus'; });
     var raw = (v.lyricsThemeOrText || '').trim();
@@ -910,6 +932,7 @@
   function buildExcludeBlock(v){
     var en = [];
     v.excludeTags.forEach(function(x){ var e = optEn(EXCLUDE_OPTIONS, x); if(e) en.push(e); });
+    v.excludeStyles.forEach(function(x){ var e = optEn(EXCLUDE_STYLE_OPTIONS, x); if(e) en.push(e); });
     if(v.excludeFree && v.excludeFree.trim()) en.push(v.excludeFree.trim());
     return en.length ? ('Style Exclude: ' + en.join(', ')) : '';
   }
@@ -918,9 +941,11 @@
     var genreZh = v.genre.map(function(g){ return optZh(GENRE_OPTIONS, g); }).filter(Boolean);
     var moodZh = v.mood.map(function(m){ return optZh(MOOD_OPTIONS, m); }).filter(Boolean);
     var instZh = v.instrument.map(function(i){ return optZh(INSTRUMENT_OPTIONS, i); }).filter(Boolean);
-    var excZh = v.excludeTags.map(function(x){ return optZh(EXCLUDE_OPTIONS, x); }).filter(Boolean);
+    var excZh = v.excludeTags.map(function(x){ return optZh(EXCLUDE_OPTIONS, x); }).filter(Boolean)
+      .concat(v.excludeStyles.map(function(x){ return optZh(EXCLUDE_STYLE_OPTIONS, x); }).filter(Boolean));
     if(v.excludeFree && v.excludeFree.trim()) excZh.push(v.excludeFree.trim());
     var structTags = STRUCTURE_OPTIONS.filter(function(o){ return v.structure.indexOf(o.v) >= 0; }).map(function(o){ return o.tag; });
+    var instrumental = isInstrumental(v);
 
     var s = '請幫我構思一首歌';
     if(v.title && v.title.trim()) s += '，暫定歌名「' + v.title.trim() + '」';
@@ -934,14 +959,19 @@
     var tempoOpt = optFind(TEMPO_OPTIONS, v.tempo);
     if(tempoOpt) s += '速度大約落在 ' + tempoOpt.zh + '。';
     var vocalOpt = optFind(VOCAL_OPTIONS, v.vocal);
-    if(vocalOpt) s += '適合' + vocalOpt.zh + '演唱。';
+    if(vocalOpt && !instrumental) s += '適合' + vocalOpt.zh + '演唱。';
     var langOpt = optFind(LANGUAGE_OPTIONS, v.language);
-    if(langOpt) s += '語言使用' + langOpt.zh + '。';
+    if(langOpt && !instrumental) s += '語言使用' + langOpt.zh + '。';
     if(instZh.length) s += '編制建議包含' + instZh.join('、') + '。';
-    if(structTags.length) s += '歌曲段落希望依序包含 ' + structTags.join('、') + '。';
-    if(v.lyricsThemeOrText && v.lyricsThemeOrText.trim()) s += '我目前想到的歌詞方向是：「' + v.lyricsThemeOrText.trim() + '」。';
+    if(!instrumental && structTags.length) s += '歌曲段落希望依序包含 ' + structTags.join('、') + '。';
     if(excZh.length) s += '請避免' + excZh.join('、') + '。';
-    s += '請先給我一份完整的歌詞草稿（依上面段落標示 [Verse]/[Chorus] 等），再簡短說明這首歌可以怎麼用 Suno 之類的 AI 音樂生成工具製作出來。';
+
+    if(instrumental){
+      s += '這是一首純音樂（無歌聲）作品，不需要歌詞。請給我這首曲子的製作建議（例如段落安排、主奏樂器、情緒堆疊變化），再簡短說明可以怎麼用 Suno 之類的 AI 音樂生成工具製作出來。';
+    } else {
+      if(v.lyricsThemeOrText && v.lyricsThemeOrText.trim()) s += '我目前想到的歌詞方向是：「' + v.lyricsThemeOrText.trim() + '」。';
+      s += '請先給我一份完整的歌詞草稿（依上面段落標示 [Verse]/[Chorus] 等），再簡短說明這首歌可以怎麼用 Suno 之類的 AI 音樂生成工具製作出來。';
+    }
     return s;
   }
 
@@ -1019,7 +1049,7 @@
       tempo: preset.tempo || '', instrument: (preset.instrument || []).slice(),
       vocal: preset.vocal || '', language: preset.language || '',
       lyricsThemeOrText: preset.lyricsThemeOrText || '', structure: (preset.structure || []).slice(),
-      excludeTags: (preset.excludeTags || []).slice(), excludeFree: preset.excludeFree || ''
+      excludeTags: (preset.excludeTags || []).slice(), excludeStyles: (preset.excludeStyles || []).slice(), excludeFree: preset.excludeFree || ''
     });
     persistState();
     renderFieldsFromState();
@@ -1145,6 +1175,7 @@
 
   /* ---------- 送給 AI 優化的請求內容：依分頁附上不同的輸出格式規則，並要求中英對照 ---------- */
   function aiPromptForMode(mode, v){
+    var instrumental = isInstrumental(v);
     if(mode === 'suno'){
       var styleTags = buildStyleBlock(v);
       var raw = (v.lyricsThemeOrText || '').trim();
@@ -1154,6 +1185,16 @@
       lines.push('你是一位專業的音樂製作與作詞顧問。請根據下面的設定，協助優化這首歌要貼給 Suno 自訂模式使用的內容。');
       lines.push('');
       lines.push('目前組好的風格標籤（英文，供 Suno 的 Style of Music 使用）：' + (styleTags || '（尚未設定）'));
+      if(instrumental){
+        lines.push('這是一首純音樂（無歌聲）作品，不需要歌詞。');
+        lines.push('');
+        lines.push('輸出規則：');
+        lines.push('1. 先輸出一段「中文說明」，簡短說明你做了哪些調整；');
+        lines.push('2. 接著另起一行輸出分隔線 "---"；');
+        lines.push('3. 輸出「Style Tags」區塊：潤飾後的英文風格標籤（逗號分隔），可視情況補充適合純音樂編曲的樂器／氛圍描述。');
+        lines.push('請勿輸出除了中文說明、分隔線、Style Tags 以外的其他內容（不需要 Lyrics 區塊）。');
+        return lines.join('\n');
+      }
       if(lyricsLooksReal(raw)){
         lines.push('這是使用者已經寫好或貼上的歌詞草稿，請幫我潤飾但盡量保留原意與段落標記：');
         lines.push(raw);
@@ -1177,6 +1218,13 @@
     lines2.push('需求：' + paragraph);
     lines2.push('');
     lines2.push('輸出規則：');
+    if(instrumental){
+      lines2.push('1. 先用中文完整回覆：製作與編曲建議（這是純音樂作品，不需要歌詞）；');
+      lines2.push('2. 接著輸出分隔線 "---"；');
+      lines2.push('3. 再輸出對應的 English 版本製作建議，方便需要時提供給英語協作者或國際版 Suno 使用。');
+      lines2.push('請勿輸出除了中文版、分隔線、English 版以外的其他內容，也不要產生歌詞。');
+      return lines2.join('\n');
+    }
     lines2.push('1. 先用中文完整回覆：歌詞草稿（依段落標記）＋簡短製作建議；');
     lines2.push('2. 接著輸出分隔線 "---"；');
     lines2.push('3. 再輸出對應的 English 版本（歌詞翻譯或改寫＋製作建議），方便需要時提供給英語協作者或國際版 Suno 使用。');
