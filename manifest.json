@@ -1,0 +1,16 @@
+{
+  "name": "音樂提示詞產生器",
+  "short_name": "音樂提示詞",
+  "description": "Suno／Gemini 音樂提示詞產生器",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#150f1e",
+  "theme_color": "#a855f7",
+  "lang": "zh-TW",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

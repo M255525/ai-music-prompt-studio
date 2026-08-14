@@ -30,6 +30,10 @@
 - **已完成部署（2026-08-13）**。實際部署走 `clasp`：複製貼上到 Apps Script 網頁編輯器出現語法錯誤（已知的剪貼簿踩坑，`node --check` 確認本機檔案語法正確），改用 `npm install -g @google/clasp` → 使用者自己在對話框用 `! clasp login` 完成 OAuth → 使用者從 Apps Script 編輯器「專案設定」複製 Script ID → `clasp clone <scriptId>` 到暫用資料夾 `_clasp-deploy/`（事後已刪除）→ `clasp push --force` 推送 → 使用者手動完成「部署 → 新增部署作業 → 網頁應用程式」＋ OAuth 同意畫面。`index.html` 的 `LICENSE_CHECK_URL` 已填入實際部署網址：`https://script.google.com/macros/s/AKfycbyrC_Pmy8GqSI3LsEeXQOyGrwMikhTX1k_3_u8UJXgEog1nKirm63NHbw2ZWMavl6x4/exec`。`doGet`／`doPost` 皆已用瀏覽器／Node `fetch()` 驗證正常（真序號 `mark0131` 回傳 `valid:true`＋到期日 2026/9/30；假序號回傳 `serial_not_found`；實際透過閘門 UI 解鎖也驗證過）。
 - **踩坑記錄**：每次「管理部署作業 → 編輯 → 新版本 → 部署」完成後，緊接著的第一次請求有機率短暫回傳 Google Drive 的「找不到網頁」錯誤頁（HTTP 404），不是部署失敗，等幾秒重試就恢復正常——這是部署更新的傳播延遲，不要誤判成部署壞掉就重新走一次部署流程。
 
+## 序號剩餘天數持續顯示（2026-08-13）
+
+同 `ai-image-prompt-studio`／`ai-prompt-generator` 的修法（同一套序號授權骨架，系統性缺口一併補上）：`.topbar` 內 `nav` 前新增常駐徽章 `#licenseBadge`（🔑 剩餘 N 天，hover 顯示到期日；`.license-badge.warn` 用本檔既有的 `--gold`/`--gold-soft`），`unlock()`/`lock()` 同步更新／隱藏，剩餘 ≤7 天變色。語法已用 `node --check` 驗證通過，實際解鎖流程沿用與 `ai-image-prompt-studio` 相同的程式碼、已在該專案端對端驗證過。
+
 ## 頂部共用跑馬燈
 
 `#marqueeBar` 內容抓自工作區既有的共用授權伺服器（`https://script.google.com/macros/s/AKfycbwKX0.../exec`，與 `Prompt/index.html`、`ai-prompt-generator`、`ai-image-prompt-studio`、`ai-video-studio` 系列共用同一個 Google Sheet），做法完全比照這些姊妹專案的獨立跑馬燈邏輯——**跟本工具自己的序號授權後端是兩個互不相干的系統**：頁面載入時直接 POST 一個空序號給共用端點，`localStorage` key `musicPromptMarquee`，每 20 分鐘背景重抓一次。改跑馬燈內容直接編輯共用 Sheet 即可，不需要重新部署任何 Apps Script。
@@ -60,6 +64,10 @@ node --check _check.js
 ## GitHub 與線上部署
 
 公開 repo：<https://github.com/M255525/ai-music-prompt-studio>（與 `ai-image-prompt-studio`／`ai-prompt-generator` 同樣模式，已建立並 push）。`.github/workflows/deploy-pages.yml` 已備妥（觸發分支 `master`），GitHub Pages 已啟用（`gh api repos/.../pages -X POST -f build_type=workflow`），線上網址：<https://m255525.github.io/ai-music-prompt-studio/>。
+
+## 加入主畫面（PWA，2026-08-14 新增）
+
+比照 `expense-tracker-pwa`／`ai-prompt-generator`／`ai-image-prompt-studio`（同一次一併加上）的做法：`manifest.json`＋`icons/`（紫色 `#a855f7` 背景「樂」字圖示）＋`service-worker.js`（network-first＋同源快取備援，跨網域請求略過，不需要每次改動升版 `CACHE_NAME`）。頁尾 `.footer-meta` 新增「📲 加入主畫面」按鈕（`#installBtn`），獨立 IIFE，跟序號授權閘門互不相依。已用 Playwright 實測 Chromium 觸發 `beforeinstallprompt`、SW 成功註冊。
 
 ## 本次未做（後續視需要再處理）
 
