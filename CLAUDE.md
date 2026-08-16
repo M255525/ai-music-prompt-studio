@@ -74,6 +74,8 @@ node --check _check.js
 
 **回饋機制與快取踩坑修正（2026-08-14，使用者實測回報「加入主畫面沒有功能」才發現兩層問題）**：(1) 原本無 `showToast` 時用「暫時置換按鈕文字」當提示，在工具列裡太不明顯，使用者完全沒注意到訊息出現過——改成 `window.alert(fallbackMessage())`，`deferredPrompt.prompt()` 也包 try/catch。(2) 改完使用者仍回報沒反應，追查發現 `service-worker.js` 的 `fetch(event.request)` 沒有繞過瀏覽器 HTTP 快取——GitHub Pages 對回應下 `Cache-Control: max-age=600`，10 分鐘內「network-first」名不符實，可能吃到舊版內容重新存進 Cache Storage。改成 `fetch(event.request, {cache:'reload'})` 強制略過 HTTP 快取，`CACHE_NAME` 同步升版 v1→v2 清掉已污染的快取。這是跟 `expense-tracker-pwa` 那次「install 階段 `cache.addAll()` 忘記加 `{cache:'reload'}`」同一個 bug class 的 runtime 版本，細節見 [[pwa-install-rollout]]。
 
+**上面「回饋機制與快取踩坑修正」第(1)點的描述對本檔不準確，已於 2026-08-16 修正**：那段文字（改用 `window.alert()`）實際上只套用到當時**沒有** `showToast()` 的 6 個專案；本工具有 `showToast()`，被誤判為「沒有這個問題」而跳過，但實際程式碼一直是 `if (typeof showToast === 'function') showToast(fallbackMessage());`——這裡有個關鍵盲點：PWA 安裝腳本是獨立 `<script>`／獨立 IIFE，`showToast()` 宣告在**另一個**（主程式的）IIFE 裡，函式作用域不會跨 IIFE 共享，所以 `typeof showToast` 在安裝腳本裡永遠是 `'undefined'`——`deferredPrompt` 為 `null` 時點安裝按鈕會**完全沒有任何回饋、也沒有主控台錯誤**。這是 2026-08-16 排查 SocialPost「按鈕鍵但沒有對應功能」回報時才發現、確認 `ai-image-prompt-studio`／`ai-prompt-generator` 也同樣中招的系統性 bug，不是本工具獨有。修法：安裝腳本不再依賴外部 `showToast`，改成自己實作 `notify(msg)`（直接操作 `#toast` DOM 元素），`deferredPrompt.prompt()` 補上 try/catch，三個姊妹專案一次修正。
+
 ## 本次未做（後續視需要再處理）
 
 - 桌面版 exe 未打包（`launcher.py` 已就緒，PORT 8790，之後要打包比照 `ai-image-prompt-studio` 的 PyInstaller 指令）。
