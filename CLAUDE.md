@@ -38,6 +38,8 @@
 
 `#marqueeBar` 內容抓自工作區既有的共用授權伺服器（`https://script.google.com/macros/s/AKfycbwKX0.../exec`，與 `Prompt/index.html`、`ai-prompt-generator`、`ai-image-prompt-studio`、`ai-video-studio` 系列共用同一個 Google Sheet），做法完全比照這些姊妹專案的獨立跑馬燈邏輯——**跟本工具自己的序號授權後端是兩個互不相干的系統**：頁面載入時直接 POST 一個空序號給共用端點，`localStorage` key `musicPromptMarquee`，每 20 分鐘背景重抓一次。改跑馬燈內容直接編輯共用 Sheet 即可，不需要重新部署任何 Apps Script。
 
+**2026-08-20 更新（`Code.gs` 未改動、不需重新部署）**：`render()` 新增 `lastKey`（`JSON.stringify(items)`）比對，內容沒變就不重繪，CSS animation 不再被重置歸零重跑；新增 `appendParsedText()`／`buildTrackContent()` 支援 `[文字](https://...)` 連結語法（`createTextNode` 組 DOM，避免 XSS），資料格式仍是純字串陣列，向下相容。已 commit＋push（GitHub Pages 自動重新部署）。
+
 ## Port 分配
 
 本機/桌面版固定用 **8790**（工作區目前已用 8765-8792，8790/8791 為建置時確認的空號；見根目錄 `CLAUDE.md`／`Prompt/CLAUDE.md` 的埠號分配表）。`launcher.py` 已建立備用，但**本次未打包 exe**（使用者明確表示這次只要網頁版），要打包時比照 `ai-image-prompt-studio` 的 PyInstaller 指令模式即可。
