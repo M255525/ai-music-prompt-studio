@@ -67,6 +67,8 @@ node --check _check.js
 
 公開 repo：<https://github.com/M255525/ai-music-prompt-studio>（與 `ai-image-prompt-studio`／`ai-prompt-generator` 同樣模式，已建立並 push）。`.github/workflows/deploy-pages.yml` 已備妥（觸發分支 `master`），GitHub Pages 已啟用（`gh api repos/.../pages -X POST -f build_type=workflow`），線上網址：<https://m255525.github.io/ai-music-prompt-studio/>。
 
+**訪客次數計數器（2026-08-21 新增）**：頁尾 `.footer-meta` 加了 `visitor-badge.laobi.icu` 的 SVG badge（`<img>` 直接嵌入，`page_id=m255525.ai-music-prompt-studio`，免金鑰免後端），做法比照 `SocialPost` 已驗證過的模式，與 `ai-image-prompt-studio`／`ai-prompt-generator` 同一次一併加上。
+
 ## 加入主畫面（PWA，2026-08-14 新增）
 
 比照 `expense-tracker-pwa`／`ai-prompt-generator`／`ai-image-prompt-studio`（同一次一併加上）的做法：`manifest.json`＋`icons/`（紫色 `#a855f7` 背景「樂」字圖示）＋`service-worker.js`（network-first＋同源快取備援，跨網域請求略過，不需要每次改動升版 `CACHE_NAME`）。頁尾 `.footer-meta` 新增「📲 加入主畫面」按鈕（`#installBtn`），獨立 IIFE，跟序號授權閘門互不相依。已用 Playwright 實測 Chromium 觸發 `beforeinstallprompt`、SW 成功註冊。
